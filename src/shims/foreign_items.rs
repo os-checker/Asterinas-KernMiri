@@ -9,7 +9,9 @@ use rustc_ast::expand::allocator::alloc_error_handler_name;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::CrateNum;
 use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrFlags;
-use rustc_middle::{mir, ty};
+use rustc_middle::{mir, ty, ty::layout::LayoutOf};
+use rustc_hir::def_id::DefIndex;
+use rustc_hir::def_id::DefId;
 use rustc_span::Symbol;
 
 use self::helpers::{ToHost, ToSoft};
@@ -494,6 +496,33 @@ trait EvalContextExtPriv<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 }
             }
 
+            "miri_create_new_thread" => {
+                let [func, args, task] = this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
+                let start_routine = this.read_pointer(func)?;
+                let func_arg = this.read_immediate(args)?;
+                let task = this.deref_pointer(task)?;
+                let id = this.start_regular_thread(
+                    None,
+                    start_routine,
+                    ExternAbi::Rust,
+                    func_arg,
+                    this.machine.layouts.unit
+                )?;
+                this.machine.thread_map.try_insert(task.ptr().addr(), id).unwrap();
+            },
+
+            "miri_switch_to" => {
+                let [task] = this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
+                let task = this.deref_pointer(task)?;
+                let Some(thread_id) = this.machine.thread_map.get(&task.ptr().addr()) else {
+                    throw_machine_stop!(TerminationInfo::Abort(
+                        "the program aborted execution due to wrong switch".to_owned()
+                    ))
+                };
+                
+                this.machine.threads.switch_to(*thread_id);
+            }
+            
             // Rust allocation
             "__rust_alloc" | "miri_alloc" => {
                 let default = |this: &mut MiriInterpCx<'tcx>| {

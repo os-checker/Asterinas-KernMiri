@@ -1,5 +1,6 @@
 //! Implements threads.
 
+use std::cell::RefCell;
 use std::mem;
 use std::num::TryFromIntError;
 use std::sync::atomic::Ordering::Relaxed;
@@ -7,6 +8,7 @@ use std::task::Poll;
 use std::time::{Duration, SystemTime};
 
 use either::Either;
+use machine::CPU_NUM;
 use rustc_abi::ExternAbi;
 use rustc_const_eval::CTRL_C_RECEIVED;
 use rustc_data_structures::fx::FxHashMap;
@@ -453,6 +455,10 @@ pub enum TimeoutAnchor {
 pub struct ThreadManager<'tcx> {
     /// Identifier of the currently active thread.
     active_thread: ThreadId,
+
+    active_cpu: usize,
+
+    cpu_to_threads: [Option<ThreadId>; crate::machine::CPU_NUM],
     /// Threads used in the program.
     ///
     /// Note that this vector also contains terminated threads.
@@ -461,6 +467,8 @@ pub struct ThreadManager<'tcx> {
     thread_local_allocs: FxHashMap<(DefId, ThreadId), StrictPointer>,
     /// A flag that indicates that we should change the active thread.
     yield_active_thread: bool,
+
+    next_thread: [Option<ThreadId>; crate::machine::CPU_NUM],
 }
 
 impl VisitProvenance for ThreadManager<'_> {
@@ -469,7 +477,10 @@ impl VisitProvenance for ThreadManager<'_> {
             threads,
             thread_local_allocs,
             active_thread: _,
+            active_cpu: _,
+            cpu_to_threads: _,
             yield_active_thread: _,
+            next_thread: _
         } = self;
 
         for thread in threads {
@@ -486,11 +497,17 @@ impl<'tcx> Default for ThreadManager<'tcx> {
         let mut threads = IndexVec::new();
         // Create the main thread and add it to the list of threads.
         threads.push(Thread::new(Some("main"), None));
+        let mut cpu_to_threads = [None; CPU_NUM];
+        cpu_to_threads[0] = Some(ThreadId::MAIN_THREAD);
+        
         Self {
             active_thread: ThreadId::MAIN_THREAD,
+            cpu_to_threads,
+            active_cpu: 0,
             threads,
             thread_local_allocs: Default::default(),
             yield_active_thread: false,
+            next_thread: [None; CPU_NUM]
         }
     }
 }
@@ -744,6 +761,11 @@ impl<'tcx> ThreadManager<'tcx> {
             .min()
     }
 
+    pub fn switch_to(&mut self, thread_id: ThreadId) {
+        self.next_thread[self.active_cpu] = Some(thread_id);
+    }
+
+
     /// Decide which action to take next and on which thread.
     ///
     /// The currently implemented scheduling policy is the one that is commonly
@@ -751,6 +773,28 @@ impl<'tcx> ThreadManager<'tcx> {
     /// long as we can and switch only when we have to (the active thread was
     /// blocked, terminated, or has explicitly asked to be preempted).
     fn schedule(&mut self, clock: &Clock) -> InterpResult<'tcx, SchedulingAction> {
+        if let ThreadState::Terminated = self.threads[self.active_thread].state {
+            self.active_thread = ThreadId::MAIN_THREAD;
+            return interp_ok(SchedulingAction::ExecuteStep);
+        }
+        if let Some(id) = self.next_thread[self.active_cpu] {
+            assert_ne!(self.active_thread, id);
+            let old_id = self.active_thread;
+            self.active_thread = id;
+            self.next_thread[self.active_cpu] = None;
+            if self.threads[self.active_thread].state.is_enabled() {
+                println!(
+                    "---------- Now executing on thread `{}` (previous: `{}`) ----------------------------------------",
+                    self.get_thread_display_name(id),
+                    self.get_thread_display_name(old_id)
+                );
+                return interp_ok(SchedulingAction::ExecuteStep);
+            }
+            else {
+                throw_machine_stop!(TerminationInfo::Deadlock);
+            }
+        }
+
         // This thread and the program can keep going.
         if self.threads[self.active_thread].state.is_enabled() && !self.yield_active_thread {
             // The currently active thread is still enabled, just continue with it.

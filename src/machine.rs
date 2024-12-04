@@ -429,6 +429,8 @@ impl<'tcx> PrimitiveLayouts<'tcx> {
     }
 }
 
+pub const CPU_NUM: usize = 2;
+
 /// The machine itself.
 ///
 /// If you add anything here that stores machine values, remember to update
@@ -445,6 +447,10 @@ pub struct MiriMachine<'tcx> {
 
     /// Ptr-int-cast module global data.
     pub alloc_addresses: alloc_addresses::GlobalState,
+
+    pub cpu_alloc_set: RefCell<FxHashSet<AllocId>>,
+
+    pub cpu_alloc: FxHashMap<(AllocId, usize), AllocId>,
 
     /// Environment variables.
     pub(crate) env_vars: EnvVars<'tcx>,
@@ -483,6 +489,8 @@ pub struct MiriMachine<'tcx> {
 
     /// The set of threads.
     pub(crate) threads: ThreadManager<'tcx>,
+
+    pub(crate) thread_map: FxHashMap<Size, ThreadId>,
 
     /// Stores which thread is eligible to run on which CPUs.
     /// This has no effect at all, it is just tracked to produce the correct result
@@ -662,6 +670,9 @@ impl<'tcx> MiriMachine<'tcx> {
             argv: None,
             cmd_line: None,
             tls: TlsData::default(),
+            cpu_alloc: FxHashMap::default(),
+            cpu_alloc_set: RefCell::new(FxHashSet::default()),
+            thread_map: FxHashMap::default(),
             isolated_op: config.isolated_op,
             validation: config.validation,
             fds: shims::FdTable::init(config.mute_stdout_stderr),
@@ -817,6 +828,9 @@ impl VisitProvenance for MiriMachine<'_> {
             backtrace_style: _,
             local_crates: _,
             rng: _,
+            cpu_alloc: _,
+            cpu_alloc_set: _,
+            thread_map: _,
             tracked_alloc_ids: _,
             track_alloc_accesses: _,
             check_alignment: _,
@@ -1275,6 +1289,29 @@ impl<'tcx> Machine<'tcx> for MiriMachine<'tcx> {
             };
             (alloc_id, size, tag)
         })
+    }
+
+    fn before_access_global(
+        tcx: TyCtxtAt<'tcx>,
+        machine: &Self,
+        alloc_id: AllocId,
+        alloc: ConstAllocation<'tcx>,
+        static_def_id: Option<DefId>,
+        is_write: bool,
+    ) -> InterpResult<'tcx> {
+        let Some(id) = static_def_id else {
+            return interp_ok(());
+        };
+
+        let attrs = tcx.codegen_fn_attrs(id);
+        if let Some(section) = attrs.link_section {
+            if section.as_str() == ".cpu_local" {
+                let v_type = tcx.type_of(id);
+                machine.cpu_alloc_set.borrow_mut().insert(alloc_id);
+            }
+        }
+
+        interp_ok(())
     }
 
     /// Called to adjust global allocations to the Provenance and AllocExtra of this machine.
