@@ -1,8 +1,11 @@
+use std::alloc::Layout;
 use std::collections::hash_map::Entry;
 use std::io::Write;
 use std::iter;
 use std::path::Path;
 
+use alloc_addresses::page_table::PageTable;
+use physical_mem::{check_page_state, create_allocation_at, free_allocations, paddr_to_mem, retype_pages_at, set_page_state, PageState, TypedKind, PAGE_SIZE, PHYSICAL_MEM};
 use rustc_abi::{Align, AlignFromBytesError, ExternAbi, Size};
 use rustc_apfloat::Float;
 use rustc_ast::expand::allocator::alloc_error_handler_name;
@@ -496,6 +499,7 @@ trait EvalContextExtPriv<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 }
             }
 
+            // OS thread operations
             "miri_create_new_thread" => {
                 let [func, args, task] = this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
                 let start_routine = this.read_pointer(func)?;
@@ -521,6 +525,103 @@ trait EvalContextExtPriv<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 };
                 
                 this.machine.threads.switch_to(*thread_id);
+            }
+
+            // OS memory
+            "kern_miri_alloc_pages" => {
+                let [paddr, count] =
+                    this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
+                let paddr = this.read_target_usize(paddr)? as usize;
+                let count = this.read_target_usize(count)? as usize;
+                
+                for i in 0..count {
+                    let addr = paddr + i * PAGE_SIZE;
+                    check_page_state(addr, PageState::Unused);
+                    set_page_state(addr, PageState::Untyped);
+                }
+            }
+
+            "kern_miri_dealloc_pages" => {
+                let [paddr, count] =
+                this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
+                let paddr = this.read_target_usize(paddr)? as usize;
+                let count = this.read_target_usize(count)? as usize;
+                
+                free_allocations(this, paddr, count);
+                // for i in 0..count {
+                //     let addr = paddr + i * PAGE_SIZE;
+                //     set_page_state(addr, PageState::Unused);
+                    
+                // }
+            }
+
+            "kern_miri_zero" => {
+                let [paddr, count] =
+                    this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
+                let paddr = this.read_target_usize(paddr)? as usize;
+                let count = this.read_target_usize(count)? as usize;
+                let actual_ptr = paddr_to_mem(paddr);
+                unsafe {
+                    core::ptr::write_bytes(actual_ptr, 0, count * 4096);
+                }
+            }
+            
+            "kern_miri_retype_pages" => {
+                // TODO: encode/decode trait libc
+                let [paddr, count, page_type, type_size] =
+                    this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
+                let paddr = this.read_target_usize(paddr)? as usize;
+                let count = this.read_target_usize(count)? as usize;
+                let page_type = this.read_target_usize(page_type)? as usize;
+
+                if paddr == 0x1000000 {
+                    println!("retype {:?}", page_type);
+                }
+                let type_size = this.read_target_usize(type_size)? as usize;
+                assert_eq!(PAGE_SIZE % type_size, 0);
+                
+                for page_index in 0..count {
+                    check_page_state(paddr + page_index * PAGE_SIZE, PageState::Untyped);
+                }
+
+                retype_pages_at(this, paddr, count, type_size, TypedKind::from_usize(page_type).unwrap())?;   
+            }
+
+            "kern_miri_get_root_page_table" => {
+                let root_paddr = this.machine.alloc_addresses.borrow().page_table.as_ref().unwrap().root_paddr();
+
+                this.write_scalar(
+                    Scalar::from_target_usize(root_paddr as u64, this),
+                    dest,
+                )?;
+            }
+
+            "kern_miri_set_root_page_table" => {
+                let [paddr] =
+                    this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
+                let paddr = this.read_target_usize(paddr)? as usize;
+
+                let mut global_state = this.machine.alloc_addresses.borrow_mut();
+                global_state.page_table = Some(PageTable::new(paddr));
+            }
+            
+            // "kern_miri_untyped_copy" => {
+            //     let [dst, src, len] =
+            //         this.check_shim(abi, ExternAbi::Rust, link_name, args)?;   
+            //     let dst = this.read_pointer(dst)?.addr();
+            //     let src = this.read_pointer(src)?.addr();
+            //     let len = this.read_target_usize(len)?;
+                
+            //     check_page_range_state(dst, len, PageState::Untyped);
+            //     check_page_range_state(src, len, PageState::Untyped);
+                
+            //     core::ptr::copy(paddr_to_mem(src).unwrap(), paddr_to_mem(dst).unwrap(), len);
+            // }
+
+            "kern_miri_log" => {
+                let [info] = this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
+                let info = this.read_target_usize(info)? as usize;
+                println!("value: 0x{:x}", info);
             }
             
             // Rust allocation

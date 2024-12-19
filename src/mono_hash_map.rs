@@ -15,7 +15,7 @@ use rustc_data_structures::fx::FxHashMap;
 use crate::AllocMap;
 
 #[derive(Debug, Clone)]
-pub struct MonoHashMap<K: Hash + Eq, V>(RefCell<FxHashMap<K, Box<V>>>);
+pub struct MonoHashMap<K: Hash + Eq, V>(pub RefCell<FxHashMap<K, Box<V>>>);
 
 impl<K: Hash + Eq, V> MonoHashMap<K, V> {
     /// This function exists for priroda to be able to iterate over all evaluator memory.

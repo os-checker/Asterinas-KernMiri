@@ -894,7 +894,8 @@ impl VClockAlloc {
                 | MiriMemoryKind::Machine
                 | MiriMemoryKind::Runtime
                 | MiriMemoryKind::ExternStatic
-                | MiriMemoryKind::Tls,
+                | MiriMemoryKind::Tls
+                | MiriMemoryKind::Kernel,
             )
             | MemoryKind::CallerLocation =>
                 (VTimestamp::ZERO, global.thread_index(ThreadId::MAIN_THREAD)),

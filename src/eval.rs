@@ -1,11 +1,14 @@
 //! Main evaluator loop and setting up the initial stack frame.
 
+use std::alloc::Layout;
 use std::ffi::{OsStr, OsString};
 use std::panic::{self, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::task::Poll;
 use std::{iter, thread};
 
+use alloc_addresses::page_table::init_boot_pt;
+use physical_mem::init_miri_physical_mem;
 use rustc_abi::ExternAbi;
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_hir::def::Namespace;
@@ -13,6 +16,9 @@ use rustc_hir::def_id::DefId;
 use rustc_middle::ty::layout::{LayoutCx, LayoutOf};
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_session::config::EntryFnType;
+
+use rustc_abi::Align;
+use crate::eval::rustc_ast::Mutability;
 
 use crate::concurrency::thread::TlsAllocAction;
 use crate::diagnostics::report_leaks;
@@ -184,7 +190,7 @@ impl Default for MiriConfig {
             backtrace_style: BacktraceStyle::Short,
             provenance_mode: ProvenanceMode::Default,
             mute_stdout_stderr: false,
-            preemption_rate: 0.01, // 1%
+            preemption_rate: 0.0, // 1%
             report_progress: None,
             retag_fields: RetagFields::Yes,
             native_lib: None,
@@ -420,6 +426,8 @@ pub fn create_ecx<'tcx>(
     interp_ok(ecx)
 }
 
+pub static mut BUFFER: [u8; 16] = [0; 16];
+
 /// Evaluates the entry function specified by `entry_id`.
 /// Returns `Some(return_code)` if program executed completed.
 /// Returns `None` if an evaluation error occurred.
@@ -432,7 +440,7 @@ pub fn eval_entry<'tcx>(
 ) -> Option<i64> {
     // Copy setting before we move `config`.
     let ignore_leaks = config.ignore_leaks;
-
+    init_miri_physical_mem();
     let mut ecx = match create_ecx(tcx, entry_id, entry_type, &config).report_err() {
         Ok(v) => v,
         Err(err) => {
@@ -442,6 +450,10 @@ pub fn eval_entry<'tcx>(
         }
     };
 
+    unsafe {
+        let page_table = init_boot_pt(&mut ecx);
+        ecx.machine.alloc_addresses.borrow_mut().set_page_table(page_table);
+    }
     // Perform the main execution.
     let res: thread::Result<InterpResult<'_, !>> =
         panic::catch_unwind(AssertUnwindSafe(|| ecx.run_threads()));
@@ -464,13 +476,24 @@ pub fn eval_entry<'tcx>(
 
     // Process the result.
     let (return_code, leak_check) = report_error(&ecx, err)?;
+    // let bytes = MiriAllocBytes::from_ptr(&BUFFER[0] as *const u8 as *mut u8, Layout::<u8>::new());
+    // unsafe {
+    //     let mut allocation = Allocation::<Provenance, (), MiriAllocBytes>::from_bytes(std::borrow::Cow::Borrowed(BUFFER.as_slice()), Align::ONE, Mutability::Mut);
+    //     let ptr = allocation.get_bytes_unchecked_raw_mut();
+    
+    //     println!("ptr!!!!: {:?}, {:?}", ptr, &BUFFER as *const [u8] as *const u8);
+    
+    //     *ptr = 1;
+
+    //     println!("mode!!!!: {:?}", &BUFFER);
+    // }
     if leak_check && !ignore_leaks {
         // Check for thread leaks.
-        if !ecx.have_all_terminated() {
-            tcx.dcx().err("the main thread terminated without waiting for all remaining threads");
-            tcx.dcx().note("set `MIRIFLAGS=-Zmiri-ignore-leaks` to disable this check");
-            return None;
-        }
+        // if !ecx.have_all_terminated() {
+        //     tcx.dcx().err("the main thread terminated without waiting for all remaining threads");
+        //     tcx.dcx().note("set `MIRIFLAGS=-Zmiri-ignore-leaks` to disable this check");
+        //     return None;
+        // }
         // Check for memory leaks.
         info!("Additional static roots: {:?}", ecx.machine.static_roots);
         let leaks = ecx.take_leaked_allocations(|ecx| &ecx.machine.static_roots);

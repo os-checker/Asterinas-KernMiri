@@ -8,6 +8,7 @@ use std::collections::hash_map::Entry;
 use std::path::Path;
 use std::{fmt, process};
 
+use physical_mem::BASE_BEGIN;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use rustc_abi::{Align, ExternAbi, Size};
@@ -114,6 +115,8 @@ impl VisitProvenance for FrameExtra<'_> {
 /// Extra memory kinds
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MiriMemoryKind {
+    /// kernel-managed memory.
+    Kernel,
     /// `__rust_alloc` memory.
     Rust,
     /// `miri_alloc` memory.
@@ -155,7 +158,7 @@ impl MayLeak for MiriMemoryKind {
     fn may_leak(self) -> bool {
         use self::MiriMemoryKind::*;
         match self {
-            Rust | Miri | C | WinHeap | WinLocal | Runtime => false,
+            Rust | Miri | C | WinHeap | WinLocal | Runtime | Kernel => false,
             Machine | Global | ExternStatic | Tls | Mmap => true,
         }
     }
@@ -167,7 +170,7 @@ impl MiriMemoryKind {
         use self::MiriMemoryKind::*;
         match self {
             // Heap allocations are fine since the `Allocation` is created immediately.
-            Rust | Miri | C | WinHeap | WinLocal | Mmap => true,
+            Rust | Miri | C | WinHeap | WinLocal | Mmap | Kernel => true,
             // Everything else is unclear, let's not show potentially confusing spans.
             Machine | Global | ExternStatic | Tls | Runtime => false,
         }
@@ -178,6 +181,7 @@ impl fmt::Display for MiriMemoryKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::MiriMemoryKind::*;
         match self {
+            Kernel => write!(f, "Kernel"),
             Rust => write!(f, "Rust heap"),
             Miri => write!(f, "Miri bare-metal heap"),
             C => write!(f, "C heap"),
@@ -662,7 +666,7 @@ impl<'tcx> MiriMachine<'tcx> {
             tcx,
             borrow_tracker,
             data_race,
-            alloc_addresses: RefCell::new(alloc_addresses::GlobalStateInner::new(config, stack_addr)),
+            alloc_addresses: RefCell::new(alloc_addresses::GlobalStateInner::new(config, BASE_BEGIN)),
             // `env_vars` depends on a full interpreter so we cannot properly initialize it yet.
             env_vars: EnvVars::default(),
             main_fn_ret_place: None,
@@ -1549,6 +1553,11 @@ impl<'tcx> Machine<'tcx> for MiriMachine<'tcx> {
             let stack_len = ecx.active_thread_stack().len();
             ecx.active_thread_mut().set_top_user_relevant_frame(stack_len - 1);
         }
+
+        let mut global_state = ecx.machine.alloc_addresses.borrow_mut();
+        let next_stack_addr = global_state.next_stack_addr;
+        global_state.stack.push(next_stack_addr);
+
         interp_ok(())
     }
 
@@ -1596,6 +1605,12 @@ impl<'tcx> Machine<'tcx> for MiriMachine<'tcx> {
         if !ecx.active_thread_stack().is_empty() {
             info!("Continuing in {}", ecx.frame().instance());
         }
+
+        let mut global_state = ecx.machine.alloc_addresses.borrow_mut();
+        if let Some(next_stack_addr) = global_state.stack.pop() {
+            global_state.next_stack_addr = next_stack_addr;
+        }
+
         res
     }
 

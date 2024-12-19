@@ -1,9 +1,12 @@
 use std::alloc::Layout;
 use std::borrow::Cow;
-use std::{alloc, slice};
+use std::{alloc, mem, slice};
 
 use rustc_abi::{Align, Size};
 use rustc_middle::mir::interpret::AllocBytes;
+
+use crate::eval::BUFFER;
+use crate::physical_mem::{PHYSICAL_MEM, TOTAL_MEM};
 
 /// Allocation bytes that explicitly handle the layout of the data they're storing.
 /// This is necessary to interface with native code that accesses the program store in Miri.
@@ -28,6 +31,13 @@ impl Clone for MiriAllocBytes {
 
 impl Drop for MiriAllocBytes {
     fn drop(&mut self) {
+        unsafe {
+            let slice_addr = self.ptr as *const u8 as usize;
+            let physical_mem_addr = PHYSICAL_MEM as *const u8 as usize;
+            if (physical_mem_addr..physical_mem_addr + TOTAL_MEM).contains(&slice_addr) {
+                return;
+            }
+        }
         // We have to reconstruct the actual layout used for allocation.
         // (`Deref` relies on `size` so we can't just always set it to at least 1.)
         let alloc_layout = if self.layout.size() == 0 {
@@ -88,6 +98,19 @@ impl AllocBytes for MiriAllocBytes {
         let slice = slice.into();
         let size = slice.len();
         let align = align.bytes();
+        unsafe {
+            let slice_addr = slice.as_ref() as *const [u8] as *const u8 as usize;
+            let physical_mem_addr = PHYSICAL_MEM as *const u8 as usize;
+            if (physical_mem_addr..physical_mem_addr + TOTAL_MEM).contains(&slice_addr) {
+                let layout = Layout::from_size_align(size, align as usize).unwrap();
+                let ptr = slice.as_ref() as *const [u8] as *const u8 as *mut u8;
+
+                return Self {
+                    ptr,
+                    layout
+                }
+            }
+        }
         // SAFETY: `alloc_fn` will only be used with `size != 0`.
         let alloc_fn = |layout| unsafe { alloc::alloc(layout) };
         let alloc_bytes = MiriAllocBytes::alloc_with(size.try_into().unwrap(), align, alloc_fn)
