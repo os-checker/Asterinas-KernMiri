@@ -3,12 +3,15 @@
 use std::cell::RefCell;
 use std::mem;
 use std::num::TryFromIntError;
+use std::ops::Range;
 use std::sync::atomic::Ordering::Relaxed;
 use std::task::Poll;
 use std::time::{Duration, SystemTime};
 
+use alloc_addresses::page_table::KERNEL_CODE_BASE_VADDR;
 use either::Either;
 use machine::CPU_NUM;
+use physical_mem::{paddr_to_mem, PageState, TypedKind, KERNEL_MEM, PAGE_SIZE, PAGE_STATES, STACK_BEGIN};
 use rustc_abi::ExternAbi;
 use rustc_const_eval::CTRL_C_RECEIVED;
 use rustc_data_structures::fx::FxHashMap;
@@ -235,6 +238,12 @@ pub struct Thread<'tcx> {
     /// The virtual call stack.
     stack: Vec<Frame<'tcx, Provenance, FrameExtra<'tcx>>>,
 
+    pub address_stack: Vec<u64>,
+    
+    pub next_stack_addr: RefCell<u64>,
+
+    pub stack_bottom: u64,
+
     /// The function to call when the stack ran empty, to figure out what to do next.
     /// Conceptually, this is the interpreter implementation of the things that happen 'after' the
     /// Rust language entry point for this thread returns (usually implemented by the C or OS runtime).
@@ -337,11 +346,14 @@ impl<'tcx> std::fmt::Debug for Thread<'tcx> {
 }
 
 impl<'tcx> Thread<'tcx> {
-    fn new(name: Option<&str>, on_stack_empty: Option<StackEmptyCallback<'tcx>>) -> Self {
+    fn new(name: Option<&str>, on_stack_empty: Option<StackEmptyCallback<'tcx>>, range: Range<u64>) -> Self {
         Self {
             state: ThreadState::Enabled,
             thread_name: name.map(|name| Vec::from(name.as_bytes())),
             stack: Vec::new(),
+            address_stack: Vec::new(),
+            next_stack_addr: RefCell::new(range.end),
+            stack_bottom: range.start,
             top_user_relevant_frame: None,
             join_status: ThreadJoinStatus::Joinable,
             panic_payloads: Vec::new(),
@@ -357,6 +369,9 @@ impl VisitProvenance for Thread<'_> {
             panic_payloads: panic_payload,
             last_error,
             stack,
+            address_stack: _,
+            next_stack_addr: _,
+            stack_bottom: _,
             top_user_relevant_frame: _,
             state: _,
             thread_name: _,
@@ -411,6 +426,9 @@ enum Timeout {
     RealTime(SystemTime),
 }
 
+static mut COUNT1: usize = 120;
+
+
 impl Timeout {
     /// How long do we have to wait from now until the specified time?
     fn get_wait_time(&self, clock: &Clock) -> Duration {
@@ -454,11 +472,13 @@ pub enum TimeoutAnchor {
 #[derive(Debug)]
 pub struct ThreadManager<'tcx> {
     /// Identifier of the currently active thread.
-    active_thread: ThreadId,
+    pub active_thread: ThreadId,
 
-    active_cpu: usize,
+    pub active_cpu: usize,
 
-    cpu_to_threads: [Option<ThreadId>; crate::machine::CPU_NUM],
+    pub next_cpu: Option<usize>,
+
+    pub cpu_to_threads: [Option<ThreadId>; crate::machine::CPU_NUM],
     /// Threads used in the program.
     ///
     /// Note that this vector also contains terminated threads.
@@ -477,6 +497,7 @@ impl VisitProvenance for ThreadManager<'_> {
             threads,
             thread_local_allocs,
             active_thread: _,
+            next_cpu: _,
             active_cpu: _,
             cpu_to_threads: _,
             yield_active_thread: _,
@@ -496,7 +517,7 @@ impl<'tcx> Default for ThreadManager<'tcx> {
     fn default() -> Self {
         let mut threads = IndexVec::new();
         // Create the main thread and add it to the list of threads.
-        threads.push(Thread::new(Some("main"), None));
+        threads.push(Thread::new(Some("main"), None, (STACK_BEGIN as u64 + KERNEL_CODE_BASE_VADDR as u64)..(KERNEL_MEM as u64 + KERNEL_CODE_BASE_VADDR as u64)));
         let mut cpu_to_threads = [None; CPU_NUM];
         cpu_to_threads[0] = Some(ThreadId::MAIN_THREAD);
         
@@ -504,6 +525,7 @@ impl<'tcx> Default for ThreadManager<'tcx> {
             active_thread: ThreadId::MAIN_THREAD,
             cpu_to_threads,
             active_cpu: 0,
+            next_cpu: None,
             threads,
             thread_local_allocs: Default::default(),
             yield_active_thread: false,
@@ -558,9 +580,9 @@ impl<'tcx> ThreadManager<'tcx> {
     }
 
     /// Create a new thread and returns its id.
-    fn create_thread(&mut self, on_stack_empty: StackEmptyCallback<'tcx>) -> ThreadId {
+    fn create_thread(&mut self, on_stack_empty: StackEmptyCallback<'tcx>, range: Range<u64>) -> ThreadId {
         let new_thread_id = ThreadId::new(self.threads.len());
-        self.threads.push(Thread::new(None, Some(on_stack_empty)));
+        self.threads.push(Thread::new(None, Some(on_stack_empty), range));
         new_thread_id
     }
 
@@ -777,22 +799,40 @@ impl<'tcx> ThreadManager<'tcx> {
             self.active_thread = ThreadId::MAIN_THREAD;
             return interp_ok(SchedulingAction::ExecuteStep);
         }
+
         if let Some(id) = self.next_thread[self.active_cpu] {
             assert_ne!(self.active_thread, id);
             let old_id = self.active_thread;
             self.active_thread = id;
+            self.cpu_to_threads[self.active_cpu] = Some(id);
             self.next_thread[self.active_cpu] = None;
             if self.threads[self.active_thread].state.is_enabled() {
                 println!(
-                    "---------- Now executing on thread `{}` (previous: `{}`) ----------------------------------------",
+                    "---------- Now executing on thread `{}` (previous: `{}`) cpu: {:?}----------------------------------------",
                     self.get_thread_display_name(id),
-                    self.get_thread_display_name(old_id)
+                    self.get_thread_display_name(old_id),
+                    self.active_cpu,
                 );
+                if let Some(next_cpu) = self.next_cpu {
+                    //println!("switch cpu to {next_cpu}, {:?}, {:?}", self.active_thread, self.cpu_to_threads[next_cpu].unwrap());
+                    self.active_cpu = next_cpu;
+                    self.active_thread = self.cpu_to_threads[next_cpu].unwrap();
+                    self.next_cpu = None;
+                    return interp_ok(SchedulingAction::ExecuteStep);
+                }
                 return interp_ok(SchedulingAction::ExecuteStep);
             }
             else {
                 throw_machine_stop!(TerminationInfo::Deadlock);
             }
+        }
+
+        if let Some(next_cpu) = self.next_cpu {
+            //println!("switch cpu to {next_cpu}, {:?}, {:?}", self.active_thread, self.cpu_to_threads[next_cpu].unwrap());
+            self.active_cpu = next_cpu;
+            self.active_thread = self.cpu_to_threads[next_cpu].unwrap();
+            self.next_cpu = None;
+            return interp_ok(SchedulingAction::ExecuteStep);
         }
 
         // This thread and the program can keep going.
@@ -825,7 +865,7 @@ impl<'tcx> ThreadManager<'tcx> {
             .chain(self.threads.iter_enumerated().take(self.active_thread.index()));
         for (id, thread) in threads {
             debug_assert_ne!(self.active_thread, id);
-            if thread.state.is_enabled() {
+            if thread.state.is_enabled() && !self.cpu_to_threads[1].is_some_and(|thread_id| thread_id == id){
                 info!(
                     "---------- Now executing on thread `{}` (previous: `{}`) ----------------------------------------",
                     self.get_thread_display_name(id),
@@ -949,6 +989,12 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
         }
     }
 
+    fn set_ap_init_thread(&mut self, cpu_id: usize, thread_id: ThreadId) {
+        let this = self.eval_context_mut();
+        let mut threads = &mut this.machine.threads;
+        threads.cpu_to_threads[cpu_id] = Some(thread_id);
+    }
+
     /// Start a regular (non-main) thread.
     #[inline]
     fn start_regular_thread(
@@ -958,6 +1004,7 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
         start_abi: ExternAbi,
         func_arg: ImmTy<'tcx>,
         ret_layout: TyAndLayout<'tcx>,
+        range: Option<Range<u64>>
     ) -> InterpResult<'tcx, ThreadId> {
         let this = self.eval_context_mut();
 
@@ -965,7 +1012,7 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
         let new_thread_id = this.machine.threads.create_thread({
             let mut state = tls::TlsDtorsState::default();
             Box::new(move |m| state.on_stack_empty(m))
-        });
+        }, range.unwrap_or(0..0));
         let current_span = this.machine.current_span();
         if let Some(data_race) = &mut this.machine.data_race {
             data_race.thread_created(&this.machine.threads, new_thread_id, current_span);
@@ -1231,6 +1278,18 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
         }
     }
 
+    fn maybe_switch_cpu(&mut self) {
+        use rand::Rng as _;
+
+        let this = self.eval_context_mut();
+        if this.machine.rng.get_mut().gen_bool(0.02) {
+            let next_cpu = (this.machine.threads.active_cpu + 1) % CPU_NUM;
+            if this.machine.threads.cpu_to_threads[next_cpu].is_some() {
+                this.machine.threads.next_cpu = Some(next_cpu);
+            }
+        }
+    }
+
     /// Run the core interpreter loop. Returns only when an interrupt occurs (an error or program
     /// termination).
     fn run_threads(&mut self) -> InterpResult<'tcx, !> {
@@ -1242,6 +1301,16 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
             }
             match this.machine.threads.schedule(&this.machine.clock)? {
                 SchedulingAction::ExecuteStep => {
+                    if let Some(pt_address) = this.machine.pt_checker {
+                        unsafe {
+                            let value = *(paddr_to_mem(pt_address) as *mut usize);
+                            let written_addr = value & !(PAGE_SIZE - 1);
+                            if let PageState::Typed { .. } = PAGE_STATES[written_addr as usize/ PAGE_SIZE] {
+                                let global_states = this.machine.alloc_addresses.borrow();
+                            }
+                        }
+                        this.machine.pt_checker = None;
+                    }
                     if !this.step()? {
                         // See if this thread can do something else.
                         match this.run_on_stack_empty()? {

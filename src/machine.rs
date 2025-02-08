@@ -1,6 +1,7 @@
 //! Global machine state as well as implementation of the interpreter engine
 //! `Machine` trait.
 
+use std::alloc::Layout;
 use std::any::Any;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -8,7 +9,8 @@ use std::collections::hash_map::Entry;
 use std::path::Path;
 use std::{fmt, process};
 
-use physical_mem::BASE_BEGIN;
+use alloc_addresses::page_table::{KERNEL_CODE_BASE_VADDR, PTE_SIZE};
+use physical_mem::{create_allocation_at, PageState, TypedKind, BASE_BEGIN, KERNEL_MEM, PAGE_SIZE, PAGE_STATES};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use rustc_abi::{Align, ExternAbi, Size};
@@ -28,6 +30,7 @@ use crate::concurrency::cpu_affinity::{self, CpuAffinityMask};
 use crate::concurrency::data_race::{self, NaReadType, NaWriteType};
 use crate::concurrency::weak_memory;
 use crate::*;
+use crate::alloc_addresses::EvalContextExtPriv;
 
 /// First real-time signal.
 /// `signal(7)` says this must be between 32 and 64 and specifies 34 or 35
@@ -454,7 +457,8 @@ pub struct MiriMachine<'tcx> {
 
     pub cpu_alloc_set: RefCell<FxHashSet<AllocId>>,
 
-    pub cpu_alloc: FxHashMap<(AllocId, usize), AllocId>,
+    /// (cpu_id, vaddr) -> actual vaddr
+    pub cpu_alloc: RefCell<FxHashMap<(usize, usize), usize>>,
 
     /// Environment variables.
     pub(crate) env_vars: EnvVars<'tcx>,
@@ -494,6 +498,7 @@ pub struct MiriMachine<'tcx> {
     /// The set of threads.
     pub(crate) threads: ThreadManager<'tcx>,
 
+    /// Task pointer to ThreadId.
     pub(crate) thread_map: FxHashMap<Size, ThreadId>,
 
     /// Stores which thread is eligible to run on which CPUs.
@@ -579,6 +584,8 @@ pub struct MiriMachine<'tcx> {
     pub(crate) stack_addr: u64,
     pub(crate) stack_size: u64,
 
+    pub(crate) pt_checker: Option<usize>,
+
     /// Whether to collect a backtrace when each allocation is created, just in case it leaks.
     pub(crate) collect_leak_backtraces: bool,
 
@@ -601,6 +608,8 @@ pub struct MiriMachine<'tcx> {
 
     /// A cache of "data range" computations for unions (i.e., the offsets of non-padding bytes).
     union_data_ranges: FxHashMap<Ty<'tcx>, RangeSet>,
+
+    pub(crate) record: Vec<std::time::Duration>,
 }
 
 impl<'tcx> MiriMachine<'tcx> {
@@ -666,7 +675,7 @@ impl<'tcx> MiriMachine<'tcx> {
             tcx,
             borrow_tracker,
             data_race,
-            alloc_addresses: RefCell::new(alloc_addresses::GlobalStateInner::new(config, BASE_BEGIN)),
+            alloc_addresses: RefCell::new(alloc_addresses::GlobalStateInner::new(config, BASE_BEGIN + KERNEL_CODE_BASE_VADDR as u64)),
             // `env_vars` depends on a full interpreter so we cannot properly initialize it yet.
             env_vars: EnvVars::default(),
             main_fn_ret_place: None,
@@ -674,7 +683,7 @@ impl<'tcx> MiriMachine<'tcx> {
             argv: None,
             cmd_line: None,
             tls: TlsData::default(),
-            cpu_alloc: FxHashMap::default(),
+            cpu_alloc: RefCell::new(FxHashMap::default()),
             cpu_alloc_set: RefCell::new(FxHashSet::default()),
             thread_map: FxHashMap::default(),
             isolated_op: config.isolated_op,
@@ -736,11 +745,13 @@ impl<'tcx> MiriMachine<'tcx> {
             page_size,
             stack_addr,
             stack_size,
+            pt_checker: None,
             collect_leak_backtraces: config.collect_leak_backtraces,
             allocation_spans: RefCell::new(FxHashMap::default()),
             const_cache: RefCell::new(FxHashMap::default()),
             symbolic_alignment: RefCell::new(FxHashMap::default()),
             union_data_ranges: FxHashMap::default(),
+            record: Vec::new(),
         }
     }
 
@@ -851,11 +862,13 @@ impl VisitProvenance for MiriMachine<'_> {
             page_size: _,
             stack_addr: _,
             stack_size: _,
+            pt_checker: _,
             collect_leak_backtraces: _,
             allocation_spans: _,
             const_cache: _,
             symbolic_alignment: _,
             union_data_ranges: _,
+            record: _,
         } = self;
 
         threads.visit_provenance(visit);
@@ -1333,13 +1346,78 @@ impl<'tcx> Machine<'tcx> for MiriMachine<'tcx> {
     ) -> InterpResult<'tcx, Cow<'b, Allocation<Self::Provenance, Self::AllocExtra, Self::Bytes>>>
     {
         let kind = Self::GLOBAL_KIND.unwrap().into();
-        let alloc = alloc.adjust_from_tcx(
+        let final_alloc = alloc.adjust_from_tcx(
             &ecx.tcx,
             |bytes, align| ecx.get_global_alloc_bytes(id, kind, bytes, align),
             |ptr| ecx.global_root_pointer(ptr),
         )?;
-        let extra = Self::init_alloc_extra(ecx, id, kind, alloc.size(), alloc.align)?;
-        interp_ok(Cow::Owned(alloc.with_extra(extra)))
+        let extra = Self::init_alloc_extra(ecx, id, kind, final_alloc.size(), final_alloc.align)?;
+        let final_address = {
+            let this = ecx.eval_context_ref();
+            this.addr_from_alloc_id(id, kind).unwrap()
+        };
+    
+        let alloc_size_usize = final_alloc.size().bytes_usize();
+        let final_paddr = {
+            let global_state = ecx.machine.alloc_addresses.borrow();
+            *global_state.base_addr.get(&id).unwrap()
+        };
+        let final_alloc = if (final_paddr < KERNEL_MEM as u64) && (final_paddr >= BASE_BEGIN) && alloc_size_usize > 0 {
+            let mut new_allocation = create_allocation_at(
+                final_paddr as usize, 
+                Layout::from_size_align(alloc_size_usize, 
+                final_alloc.align.bytes_usize()).unwrap());
+            
+            let alloc_range = rustc_middle::mir::interpret::alloc_range(Size::ZERO, final_alloc.size());
+            let init_mask = final_alloc.init_mask();
+
+            if !init_mask.is_range_initialized(alloc_range).is_err_and(|range| range.start == alloc_range.start && range.size == alloc_range.size) {
+                // Copy context
+                let src_ptr = final_alloc.get_bytes_unchecked_raw();
+                let mut dst_ptr = new_allocation.get_bytes_unchecked_raw_mut();
+                unsafe {
+                    core::ptr::copy(src_ptr, dst_ptr, alloc_size_usize);
+                }
+
+                // Copy mask
+                let init_copy = init_mask.prepare_copy((0..alloc_size_usize).into());
+                new_allocation.init_mask_apply_copy(init_copy, alloc_range, 1);
+
+                // Copy provenance
+                let provenance_copy = final_alloc.provenance().prepare_copy(alloc_range, Size::ZERO, 1, ecx).unwrap();
+                new_allocation.provenance_apply_copy(provenance_copy);
+            }
+            
+            new_allocation.with_extra(extra)
+        } else {
+            final_alloc.with_extra(extra)
+        };
+
+        //let final_alloc = final_alloc.with_extra(extra);
+        if ecx.machine.cpu_alloc_set.borrow().get(&id).is_some() {
+            for cpu_id in 1..CPU_NUM {
+                let alloc_clone = alloc.clone();
+                let ap_id = ecx.tcx.reserve_alloc_id();
+                let allocation = alloc_clone.adjust_from_tcx(
+                    &ecx.tcx,
+                    |bytes, align| ecx.get_global_alloc_bytes(ap_id, kind, bytes, align),
+                    |ptr| ecx.global_root_pointer(ptr),
+                )?;
+                let extra = Self::init_alloc_extra(ecx, ap_id, kind, allocation.size(), allocation.align)?;
+                let allocation = allocation.with_extra(extra);
+            
+                ecx.memory.alloc_map().0.borrow_mut().insert(ap_id, Box::new((kind, allocation)));
+
+                let this = ecx.eval_context_ref();
+                let address = this.addr_from_alloc_id(ap_id, kind).unwrap();
+                this.machine.alloc_addresses.borrow_mut().exposed.insert(ap_id);
+                //println!("final_address: {:x} -> {:x}, {:?}", final_address, address, id);
+                ecx.machine.cpu_alloc.borrow_mut().insert((cpu_id, final_address as usize), address as usize);
+                ecx.machine.cpu_alloc_set.borrow_mut().insert(ap_id);
+            }
+        }
+
+        interp_ok(Cow::Owned(final_alloc))
     }
 
     #[inline(always)]
@@ -1387,6 +1465,17 @@ impl<'tcx> Machine<'tcx> for MiriMachine<'tcx> {
         if let Some(weak_memory) = &alloc_extra.weak_memory {
             weak_memory.memory_accessed(range, machine.data_race.as_ref().unwrap());
         }
+
+        let global_state = machine.alloc_addresses.borrow();
+        let address = *global_state.base_addr.get(&alloc_id).unwrap() as usize;
+        unsafe {
+            if let PageState::Typed {page_type, type_size} = PAGE_STATES[address / PAGE_SIZE] { 
+                if page_type == TypedKind::PageTable {
+                    machine.pt_checker = Some(address - address % PTE_SIZE);
+                }
+            }
+        }
+
         interp_ok(())
     }
 
@@ -1538,6 +1627,7 @@ impl<'tcx> Machine<'tcx> for MiriMachine<'tcx> {
 
         // These are our preemption points.
         ecx.maybe_preempt_active_thread();
+        //ecx.maybe_switch_cpu();
 
         // Make sure some time passes.
         ecx.machine.clock.tick();
@@ -1554,9 +1644,9 @@ impl<'tcx> Machine<'tcx> for MiriMachine<'tcx> {
             ecx.active_thread_mut().set_top_user_relevant_frame(stack_len - 1);
         }
 
-        let mut global_state = ecx.machine.alloc_addresses.borrow_mut();
-        let next_stack_addr = global_state.next_stack_addr;
-        global_state.stack.push(next_stack_addr);
+        let thread = ecx.machine.threads.active_thread_mut();
+        let next_stack_addr = *thread.next_stack_addr.borrow();
+        thread.address_stack.push(next_stack_addr);
 
         interp_ok(())
     }
@@ -1606,9 +1696,9 @@ impl<'tcx> Machine<'tcx> for MiriMachine<'tcx> {
             info!("Continuing in {}", ecx.frame().instance());
         }
 
-        let mut global_state = ecx.machine.alloc_addresses.borrow_mut();
-        if let Some(next_stack_addr) = global_state.stack.pop() {
-            global_state.next_stack_addr = next_stack_addr;
+        let thread = ecx.machine.threads.active_thread_mut();
+        if let Some(next_stack_addr) = thread.address_stack.pop() {
+            *thread.next_stack_addr.borrow_mut() = next_stack_addr;
         }
 
         res

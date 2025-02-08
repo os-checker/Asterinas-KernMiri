@@ -426,8 +426,6 @@ pub fn create_ecx<'tcx>(
     interp_ok(ecx)
 }
 
-pub static mut BUFFER: [u8; 16] = [0; 16];
-
 /// Evaluates the entry function specified by `entry_id`.
 /// Returns `Some(return_code)` if program executed completed.
 /// Returns `None` if an evaluation error occurred.
@@ -475,18 +473,13 @@ pub fn eval_entry<'tcx>(
     }
 
     // Process the result.
-    let (return_code, leak_check) = report_error(&ecx, err)?;
-    // let bytes = MiriAllocBytes::from_ptr(&BUFFER[0] as *const u8 as *mut u8, Layout::<u8>::new());
-    // unsafe {
-    //     let mut allocation = Allocation::<Provenance, (), MiriAllocBytes>::from_bytes(std::borrow::Cow::Borrowed(BUFFER.as_slice()), Align::ONE, Mutability::Mut);
-    //     let ptr = allocation.get_bytes_unchecked_raw_mut();
-    
-    //     println!("ptr!!!!: {:?}, {:?}", ptr, &BUFFER as *const [u8] as *const u8);
-    
-    //     *ptr = 1;
+    let mut index = 0;
+    for time_record in &ecx.machine.record {
+        println!("{}, time: {:?}", index, time_record);
+        index += 1;
+    }
 
-    //     println!("mode!!!!: {:?}", &BUFFER);
-    // }
+    let (return_code, leak_check) = report_error(&ecx, err)?;
     if leak_check && !ignore_leaks {
         // Check for thread leaks.
         // if !ecx.have_all_terminated() {

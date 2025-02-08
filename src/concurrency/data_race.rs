@@ -1059,7 +1059,8 @@ impl VClockAlloc {
         {
             if let Err(DataRace) =
                 mem_clocks.read_race_detect(&mut thread_clocks, index, read_type, current_span)
-            {
+            {   
+                println!("data race read");
                 drop(thread_clocks);
                 // Report data-race.
                 return Self::report_data_race(
@@ -1105,6 +1106,7 @@ impl VClockAlloc {
                 mem_clocks.write_race_detect(&mut thread_clocks, index, write_type, current_span)
             {
                 drop(thread_clocks);
+                println!("data race write");
                 // Report data-race
                 return Self::report_data_race(
                     global,

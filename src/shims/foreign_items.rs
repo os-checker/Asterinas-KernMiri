@@ -5,7 +5,7 @@ use std::iter;
 use std::path::Path;
 
 use alloc_addresses::page_table::PageTable;
-use physical_mem::{check_page_state, create_allocation_at, free_allocations, paddr_to_mem, retype_pages_at, set_page_state, PageState, TypedKind, PAGE_SIZE, PHYSICAL_MEM};
+use physical_mem::{check_page_state, create_allocation_at, free_allocations, insert_init_mask, paddr_to_mem, retype_pages_at, set_page_state, PageState, TypedKind, PAGE_SIZE, PHYSICAL_MEM, PHYS_INIT_MASK};
 use rustc_abi::{Align, AlignFromBytesError, ExternAbi, Size};
 use rustc_apfloat::Float;
 use rustc_ast::expand::allocator::alloc_error_handler_name;
@@ -499,20 +499,57 @@ trait EvalContextExtPriv<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 }
             }
 
+            // used for tests
+            "kern_miri_record_time" =>  {
+                use std::time::{SystemTime, UNIX_EPOCH};
+
+                let [test_id] = this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
+                let test_id = this.read_target_usize(test_id)?;
+                let now = SystemTime::now();
+                let since_epoch = now.duration_since(UNIX_EPOCH).unwrap();
+
+                this.machine.record.push(since_epoch);
+            }
+
+
             // OS thread operations
-            "miri_create_new_thread" => {
-                let [func, args, task] = this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
+            "kern_miri_init_ap" => {
+                let [cpu_id, func, args, task, stack_end, stack_size] = this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
+                let cpu_id = this.read_target_usize(cpu_id)?;
                 let start_routine = this.read_pointer(func)?;
                 let func_arg = this.read_immediate(args)?;
                 let task = this.deref_pointer(task)?;
+                let stack_end = this.read_target_usize(stack_end)?;
+                let stack_size = this.read_target_usize(stack_size)?;
                 let id = this.start_regular_thread(
                     None,
                     start_routine,
                     ExternAbi::Rust,
                     func_arg,
-                    this.machine.layouts.unit
+                    this.machine.layouts.unit,
+                    Some(stack_end - stack_size..stack_end)
                 )?;
+                
+                this.set_ap_init_thread(cpu_id as usize, id);
                 this.machine.thread_map.try_insert(task.ptr().addr(), id).unwrap();
+            }
+
+            "miri_create_new_thread" => {
+                let [func, args, task, stack_end, stack_size] = this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
+                let start_routine = this.read_pointer(func)?;
+                let func_arg = this.read_immediate(args)?;
+                let task = this.deref_pointer(task)?;
+                let stack_end = this.read_target_usize(stack_end)?;
+                let stack_size = this.read_target_usize(stack_size)?;
+                let id = this.start_regular_thread(
+                    None,
+                    start_routine,
+                    ExternAbi::Rust,
+                    func_arg,
+                    this.machine.layouts.unit,
+                    Some(stack_end - stack_size..stack_end)
+                )?;
+                this.machine.thread_map.insert(task.ptr().addr(), id);
             },
 
             "miri_switch_to" => {
@@ -538,6 +575,7 @@ trait EvalContextExtPriv<'tcx>: crate::MiriInterpCxExt<'tcx> {
                     let addr = paddr + i * PAGE_SIZE;
                     check_page_state(addr, PageState::Unused);
                     set_page_state(addr, PageState::Untyped);
+                    insert_init_mask(this, addr);
                 }
             }
 
@@ -547,7 +585,7 @@ trait EvalContextExtPriv<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 let paddr = this.read_target_usize(paddr)? as usize;
                 let count = this.read_target_usize(count)? as usize;
                 
-                free_allocations(this, paddr, count);
+                free_allocations(this, paddr, count)?;
                 // for i in 0..count {
                 //     let addr = paddr + i * PAGE_SIZE;
                 //     set_page_state(addr, PageState::Unused);
@@ -564,6 +602,13 @@ trait EvalContextExtPriv<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 unsafe {
                     core::ptr::write_bytes(actual_ptr, 0, count * 4096);
                 }
+                for i in 0..count {
+                    let addr = paddr + i * PAGE_SIZE;
+                    unsafe {
+                        let mut mask_allocation = PHYS_INIT_MASK.get_mut(&addr).unwrap();
+                        mask_allocation.get_bytes_unchecked_for_overwrite_ptr(this, (0..4096).into());
+                    }
+                }
             }
             
             "kern_miri_retype_pages" => {
@@ -574,9 +619,6 @@ trait EvalContextExtPriv<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 let count = this.read_target_usize(count)? as usize;
                 let page_type = this.read_target_usize(page_type)? as usize;
 
-                if paddr == 0x1000000 {
-                    println!("retype {:?}", page_type);
-                }
                 let type_size = this.read_target_usize(type_size)? as usize;
                 assert_eq!(PAGE_SIZE % type_size, 0);
                 
@@ -605,6 +647,41 @@ trait EvalContextExtPriv<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 global_state.page_table = Some(PageTable::new(paddr));
             }
             
+            "kern_miri_get_cpu_local_va" => {
+                let [cpu_local_va] =
+                    this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
+                let vaddr = this.read_target_usize(cpu_local_va)? as usize;
+
+                let cpu = this.machine.threads.active_cpu;
+                if cpu == 0 {
+                    this.write_scalar(
+                        Scalar::from_target_usize(vaddr as u64, this),
+                        dest,
+                    )?;
+                } else {
+                    let actual_vaddr = *this.machine.cpu_alloc.borrow().get(&(cpu, vaddr)).unwrap_or_else(|| {
+                        println!("something wrong: {:x}", vaddr);
+                        println!("{:?}", this.machine.cpu_alloc);
+                        panic!();
+                    });
+                    this.write_scalar(
+                        Scalar::from_target_usize(actual_vaddr as u64, this),
+                        dest,
+                    )?;
+
+
+                    // else {
+                    //     let alloc_id = this.alloc_id_from_addr()
+                    //     let mut global_state = this.machine.alloc_addresses.borrow_mut();
+
+                    //     let old_allocation = {
+                    //         let alloc_id = global_state.base_ad
+                    //     };
+                    //     let allocation = Allocation::uninit()
+                    // }
+                }                
+            }
+
             // "kern_miri_untyped_copy" => {
             //     let [dst, src, len] =
             //         this.check_shim(abi, ExternAbi::Rust, link_name, args)?;   
@@ -622,6 +699,33 @@ trait EvalContextExtPriv<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 let [info] = this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
                 let info = this.read_target_usize(info)? as usize;
                 println!("value: 0x{:x}", info);
+            }
+
+            "kern_miri_copy" => {
+                let [dst, src, len] = this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
+                let mut dst = this.read_target_usize(dst)? as usize;
+                let mut src = this.read_target_usize(src)? as usize;
+                let mut len = this.read_target_usize(len)? as usize;
+
+                while len > 0 {
+                    let dst_remain = PAGE_SIZE - dst % PAGE_SIZE;
+                    let src_remain = PAGE_SIZE - src % PAGE_SIZE;
+                    let remain = core::cmp::min(dst_remain, src_remain);
+
+                    let global_state = this.machine.alloc_addresses.borrow();
+                    let page_table = global_state.page_table.as_ref().unwrap();
+
+                    let real_dst = page_table.page_walk(dst).unwrap();
+                    let real_src = page_table.page_walk(src).unwrap();
+
+                    let real_len = core::cmp::min(len, remain);
+                    println!("look: {:x}, {:x}, {}", real_dst, real_src, real_len);
+                    crate::physical_mem::physical_copy(real_dst, real_src, real_len);
+
+                    len -= real_len;
+                    src += real_len;
+                    dst += real_len;
+                }
             }
             
             // Rust allocation

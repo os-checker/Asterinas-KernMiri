@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use std::fmt::Write;
 use std::{cmp, mem};
 
+use diagnostics::Operation;
 use rustc_abi::{BackendRepr, Size};
 use rustc_data_structures::fx::FxHashSet;
 use rustc_middle::mir::{Mutability, RetagKind};
@@ -273,9 +274,16 @@ impl<'tcx> Stack {
         // Two main steps: Find granting item, remove incompatible items above.
 
         // Step 1: Find granting item.
-        let granting_idx =
-            self.find_granting(access, tag, exposed_tags).map_err(|()| dcx.access_error(self))?;
+        let res =
+            self.find_granting(access, tag, exposed_tags).map_err(|()| dcx.access_error(self));
 
+        // if let Err(_) = &res {
+        //     if let Operation::Access(_) = &dcx.operation {
+        //         return interp_ok(());
+        //     }
+        // }
+
+        let granting_idx = res?;
         // Step 2: Remove incompatible items above them.  Make sure we do not remove protected
         // items.  Behavior differs for reads and writes.
         // In case of wildcards/unknown matches, we remove everything that is *definitely* gone.

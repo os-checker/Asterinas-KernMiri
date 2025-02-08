@@ -121,7 +121,7 @@ pub struct DiagnosticCxBuilder<'ecx, 'tcx> {
 }
 
 pub struct DiagnosticCx<'history, 'ecx, 'tcx> {
-    operation: Operation,
+    pub operation: Operation,
     machine: &'ecx MiriMachine<'tcx>,
     history: &'history mut AllocHistory,
     offset: Size,
@@ -176,7 +176,7 @@ impl<'history, 'ecx, 'tcx> DiagnosticCx<'history, 'ecx, 'tcx> {
 }
 
 #[derive(Debug, Clone)]
-enum Operation {
+pub enum Operation {
     Retag(RetagOp),
     Access(AccessOp),
     Dealloc(DeallocOp),
@@ -206,7 +206,7 @@ pub enum RetagCause {
 }
 
 #[derive(Debug, Clone)]
-struct AccessOp {
+pub struct AccessOp {
     kind: AccessKind,
     tag: ProvenanceExtra,
     range: AllocRange,
@@ -409,6 +409,8 @@ impl<'history, 'ecx, 'tcx> DiagnosticCx<'history, 'ecx, 'tcx> {
             Operation::Retag(_) => return self.grant_error(stack),
             Operation::Dealloc(_) => return self.dealloc_error(stack),
         };
+
+        //println!("look: {:x}", *self.machine.alloc_addresses.borrow().base_addr.get(&self.history.id).unwrap());
         let action = format!(
             "attempting a {access} using {tag:?} at {alloc_id:?}[{offset:#x}]",
             access = op.kind,

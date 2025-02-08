@@ -5,7 +5,6 @@ use std::{alloc, mem, slice};
 use rustc_abi::{Align, Size};
 use rustc_middle::mir::interpret::AllocBytes;
 
-use crate::eval::BUFFER;
 use crate::physical_mem::{PHYSICAL_MEM, TOTAL_MEM};
 
 /// Allocation bytes that explicitly handle the layout of the data they're storing.
