@@ -9,11 +9,7 @@ use spin::Once;
 
 use super::{meta::AnyFrameMeta, segment::Segment, Frame};
 use crate::{
-    boot::memory_region::MemoryRegionType,
-    error::Error,
-    mm::{paddr_to_vaddr, Paddr, PAGE_SIZE},
-    prelude::*,
-    sync::SpinLock,
+    arch::kern_miri_zero, boot::memory_region::MemoryRegionType, error::Error, mm::{paddr_to_vaddr, Paddr, PAGE_SIZE}, prelude::*, sync::SpinLock
 };
 
 /// Options for allocating physical memory frames.
@@ -67,7 +63,10 @@ impl FrameAllocOptions {
         if self.zeroed {
             let addr = paddr_to_vaddr(frame.start_paddr()) as *mut u8;
             // SAFETY: The newly allocated frame is guaranteed to be valid.
-            unsafe { core::ptr::write_bytes(addr, 0, PAGE_SIZE) }
+            unsafe { 
+                kern_miri_zero(frame.start_paddr() as usize, 1);
+                //core::ptr::write_bytes(addr, 0, PAGE_SIZE) 
+            }
         }
 
         Ok(frame)
@@ -110,7 +109,10 @@ impl FrameAllocOptions {
         if self.zeroed {
             let addr = paddr_to_vaddr(segment.start_paddr()) as *mut u8;
             // SAFETY: The newly allocated segment is guaranteed to be valid.
-            unsafe { core::ptr::write_bytes(addr, 0, nframes * PAGE_SIZE) }
+            unsafe { 
+                kern_miri_zero(segment.start_paddr(), nframes);
+                //core::ptr::write_bytes(addr, 0, nframes * PAGE_SIZE) 
+            }
         }
 
         Ok(segment)
@@ -159,6 +161,10 @@ impl CountingFrameAllocator {
         match self.allocator.alloc(count) {
             Some(value) => {
                 self.allocated += count * PAGE_SIZE;
+                unsafe {
+                    #[cfg(miri)]
+                    crate::arch::miri::kern_miri_alloc_pages(value * PAGE_SIZE, count);
+                }
                 Some(value)
             }
             None => None,
@@ -169,6 +175,10 @@ impl CountingFrameAllocator {
     // up the underlying allocator.
     pub fn dealloc(&mut self, start_frame: usize, count: usize) {
         self.allocator.dealloc(start_frame, count);
+        unsafe {
+            #[cfg(miri)]
+            crate::arch::miri::kern_miri_dealloc_pages(start_frame * PAGE_SIZE, count);
+        }
         self.allocated -= count * PAGE_SIZE;
     }
 

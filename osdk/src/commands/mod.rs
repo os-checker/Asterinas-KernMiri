@@ -9,9 +9,10 @@ mod profile;
 mod run;
 mod test;
 mod util;
+mod miri;
 
 pub use self::{
-    build::execute_build_command, debug::execute_debug_command, new::execute_new_command,
+    miri::execute_miri_command, build::execute_build_command, debug::execute_debug_command, new::execute_new_command,
     profile::execute_profile_command, run::execute_run_command, test::execute_test_command,
 };
 

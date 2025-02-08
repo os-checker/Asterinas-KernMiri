@@ -7,7 +7,7 @@ use clap::{crate_version, Args, Parser, ValueEnum};
 use crate::{
     arch::Arch,
     commands::{
-        execute_build_command, execute_debug_command, execute_forwarded_command,
+        execute_miri_command, execute_build_command, execute_debug_command, execute_forwarded_command,
         execute_new_command, execute_profile_command, execute_run_command, execute_test_command,
     },
     config::{
@@ -58,6 +58,9 @@ pub fn main() {
         OsdkSubcommand::Check(args) => execute_forwarded_command("check", &args.args, true),
         OsdkSubcommand::Clippy(args) => execute_forwarded_command("clippy", &args.args, true),
         OsdkSubcommand::Doc(args) => execute_forwarded_command("doc", &args.args, false),
+        OsdkSubcommand::Miri(test_args) => {
+            execute_miri_command(&load_config(&test_args.common_args), test_args)
+        }
     }
 }
 
@@ -95,6 +98,8 @@ pub enum OsdkSubcommand {
     Clippy(ForwardedArguments),
     #[command(about = "Build a package's documentation")]
     Doc(ForwardedArguments),
+    #[command(about = "Use miri to run user mode tests")]
+    Miri(TestArgs),
 }
 
 #[derive(Debug, Parser)]

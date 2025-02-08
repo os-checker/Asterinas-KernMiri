@@ -22,11 +22,11 @@ pub(crate) struct ApBootInfo {
     /// It holds the boot stack top pointers used by all APs.
     pub(crate) boot_stack_array: Segment<KernelMeta>,
     /// `per_ap_info` maps each AP's ID to its associated boot information.
-    per_ap_info: BTreeMap<u32, PerApInfo>,
+    pub per_ap_info: BTreeMap<u32, PerApInfo>,
 }
 
-struct PerApInfo {
-    is_started: AtomicBool,
+pub struct PerApInfo {
+    pub is_started: AtomicBool,
     // TODO: When the AP starts up and begins executing tasks, the boot stack will
     // no longer be used, and the `Segment` can be deallocated (this problem also
     // exists in the boot processor, but the memory it occupies should be returned
@@ -73,11 +73,11 @@ pub fn boot_all_aps() {
             let boot_stack_ptr = paddr_to_vaddr(boot_stack_pages.end_paddr());
             let stack_array_ptr = paddr_to_vaddr(boot_stack_array.start_paddr()) as *mut u64;
             // SAFETY: The `stack_array_ptr` is valid and aligned.
-            unsafe {
-                stack_array_ptr
-                    .add(ap as usize)
-                    .write_volatile(boot_stack_ptr as u64);
-            }
+            // unsafe {
+            //     stack_array_ptr
+            //         .add(ap as usize)
+            //         .write_volatile(boot_stack_ptr as u64);
+            // }
             per_ap_info.insert(
                 ap,
                 PerApInfo {
@@ -96,7 +96,7 @@ pub fn boot_all_aps() {
     log::info!("Booting all application processors...");
 
     bringup_all_aps();
-    wait_for_all_aps_started();
+    //wait_for_all_aps_started();
 
     log::info!("All application processors started. The BSP continues to run.");
 }

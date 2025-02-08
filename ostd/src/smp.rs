@@ -5,15 +5,14 @@
 //! This module provides a way to execute code on other processors via inter-
 //! processor interrupts.
 
+use core::sync::atomic::Ordering;
+
 use alloc::collections::VecDeque;
 
 use spin::Once;
 
 use crate::{
-    cpu::{CpuSet, PinCurrentCpu},
-    cpu_local,
-    sync::SpinLock,
-    trap::{self, IrqLine, TrapFrame},
+    arch::kern_miri_init_ap, boot::smp::AP_BOOT_INFO, cpu::{CpuId, CpuSet, PinCurrentCpu}, cpu_local, miri_println, mm::kspace::KERNEL_BASE_VADDR, sync::SpinLock, task::{scheduler::{exit_current, info::CommonSchedInfo, SCHEDULER}, Task, KERNEL_STACK_SIZE}, trap::{self, IrqLine, TrapFrame}
 };
 
 /// Execute a function on other processors.
@@ -84,4 +83,52 @@ pub(super) fn init() {
     let mut irq = IrqLine::alloc().unwrap();
     irq.on_active(do_inter_processor_call);
     INTER_PROCESSOR_CALL_IRQ.call_once(|| irq);
+}
+
+pub(super) fn init2() {
+    if !SCHEDULER.is_completed() {
+        crate::task::scheduler::fifo_scheduler::init();
+    }
+
+    let ap_boot_info = super::boot::smp::AP_BOOT_INFO.get().unwrap();
+    let boot_stack = &ap_boot_info.boot_stack_array;
+
+    unsafe {
+        kern_miri_init_ap(1, ap_init_task, 0, &*(0x1000 as *const Task), boot_stack.end_paddr() + KERNEL_BASE_VADDR, boot_stack.size());
+    }
+}
+
+fn ap_init_task(_temp: usize) {
+    unsafe {
+        crate::cpu::set_this_cpu_id(1);
+        crate::cpu::local::init_on_ap(1);
+    }
+
+    // let ap_boot_info = AP_BOOT_INFO.get().unwrap();
+    // ap_boot_info
+    //     .per_ap_info
+    //     .get(&1)
+    //     .unwrap()
+    //     .is_started
+    //     .store(true, Ordering::Release);
+    
+    let task1 = move || {
+        crate::miri_println!("ap init");
+
+        loop {
+            crate::task::Task::yield_now();
+        }
+    };
+
+    let task1 = alloc::sync::Arc::new(
+        crate::task::TaskOptions::new(task1)
+            .data(())
+            .build()
+            .unwrap(),
+    );
+
+    task1.cpu().set_if_is_none(CpuId::try_from(1).unwrap());
+    task1.run();
+
+    exit_current();
 }

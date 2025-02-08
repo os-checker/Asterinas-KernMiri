@@ -2,7 +2,7 @@
 
 use std::process::Command;
 
-use crate::util::get_current_crate_info;
+use crate::util::{get_cargo_metadata, get_current_crate_info, parse_package_id_string};
 
 pub const COMMON_CARGO_ARGS: &[&str] = &[
     "-Zbuild-std=core,alloc,compiler_builtins",
@@ -10,6 +10,7 @@ pub const COMMON_CARGO_ARGS: &[&str] = &[
 ];
 
 pub const DEFAULT_TARGET_RELPATH: &str = "osdk";
+pub const DEFAULT_MIRI_TARGET_RELPATH: &str = "osdk-miri";
 
 pub fn cargo() -> Command {
     Command::new("cargo")
@@ -28,4 +29,21 @@ pub fn bin_file_name() -> String {
 
 pub(crate) fn is_tdx_enabled() -> bool {
     std::env::var("INTEL_TDX").is_ok_and(|s| s == "1")
+}
+
+pub fn get_workspace_default_members() -> Vec<String> {
+    let metadata = get_cargo_metadata(None::<&str>, None::<&[&str]>).unwrap();
+    let default_members = metadata
+        .get("workspace_default_members")
+        .unwrap()
+        .as_array()
+        .unwrap();
+    default_members
+        .iter()
+        .map(|value| {
+            let default_member = value.as_str().unwrap();
+            let crate_info = parse_package_id_string(default_member);
+            crate_info.path
+        })
+        .collect()
 }

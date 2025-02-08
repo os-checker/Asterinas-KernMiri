@@ -52,7 +52,7 @@ use static_assertions::const_assert_eq;
 
 use super::{allocator, Segment};
 use crate::{
-    arch::mm::PagingConsts,
+    arch::{mm::PagingConsts, PageType},
     mm::{
         kspace::LINEAR_MAPPING_BASE_VADDR, paddr_to_vaddr, page_size, page_table::boot_pt,
         CachePolicy, Infallible, Paddr, PageFlags, PageProperty, PrivilegedPageFlags, Vaddr,
@@ -152,9 +152,12 @@ pub unsafe trait AnyFrameMeta: Any + Send + Sync + Debug + 'static {
 macro_rules! impl_frame_meta_for {
     // Implement without specifying the drop behavior.
     ($t:ty) => {
-        use static_assertions::const_assert;
-        const_assert!(size_of::<$t>() <= $crate::mm::frame::meta::FRAME_METADATA_MAX_SIZE);
-        const_assert!(align_of::<$t>() <= $crate::mm::frame::meta::FRAME_METADATA_MAX_ALIGN);
+        static_assertions::const_assert!(
+            size_of::<$t>() <= $crate::mm::frame::meta::FRAME_METADATA_MAX_SIZE
+        );
+        static_assertions::const_assert!(
+            align_of::<$t>() <= $crate::mm::frame::meta::FRAME_METADATA_MAX_ALIGN
+        );
         // SAFETY: The size and alignment of the structure are checked.
         unsafe impl $crate::mm::frame::meta::AnyFrameMeta for $t {}
     };
@@ -277,6 +280,16 @@ pub(crate) fn init() -> Segment<MetaPageMeta> {
         }
     })
     .unwrap();
+    for i in 0..tot_nr_frames {
+        let address = (meta_pages + i * size_of::<MetaSlot>());
+        unsafe {
+            core::ptr::write_bytes(
+                address as *mut u8,
+                0xff,
+                size_of::<MetaSlot>(),
+            );
+        }
+    }
 
     // Now the metadata frames are mapped, we can initialize the metadata.
     Segment::from_unused(meta_pages..meta_pages + nr_meta_pages * PAGE_SIZE, |_| {
@@ -297,6 +310,15 @@ fn alloc_meta_frames(tot_nr_frames: usize) -> (usize, Paddr) {
         .unwrap()
         * PAGE_SIZE;
 
+    unsafe {
+        #[cfg(miri)]
+        crate::arch::miri::kern_miri_retype_pages(
+            start_paddr, 
+            nr_meta_pages, 
+            PageType::Slab,
+            size_of::<MetaSlot>()
+        );
+    }  
     let slots = paddr_to_vaddr(start_paddr) as *mut MetaSlot;
 
     // Fill the metadata frames with a byte pattern of `REF_COUNT_UNUSED`.
@@ -305,13 +327,13 @@ fn alloc_meta_frames(tot_nr_frames: usize) -> (usize, Paddr) {
     // that are going to be treated as metadata slots. The byte pattern is
     // valid as the initial value of the reference count (other fields are
     // either not accessed or `MaybeUninit`).
-    unsafe {
-        core::ptr::write_bytes(
-            slots as *mut u8,
-            0xff,
-            tot_nr_frames * size_of::<MetaSlot>(),
-        );
-    }
+    // unsafe {
+    //     core::ptr::write_bytes(
+    //         slots as *mut u8,
+    //         0xff,
+    //         tot_nr_frames * size_of::<MetaSlot>(),
+    //     );
+    // }
 
     (nr_meta_pages, start_paddr)
 }

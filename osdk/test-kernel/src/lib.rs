@@ -5,7 +5,7 @@
 //! run when OSDK is used to test a specific crate.
 
 #![no_std]
-#![forbid(unsafe_code)]
+#![feature(core_intrinsics)]
 
 extern crate alloc;
 
@@ -20,6 +20,7 @@ use ostd::{
     ktest::{
         get_ktest_crate_whitelist, get_ktest_test_whitelist, KtestError, KtestItem, KtestIter,
     },
+    miri_println, miri_record
 };
 use owo_colors::OwoColorize;
 use path::{KtestPath, SuffixTrie};
@@ -31,6 +32,7 @@ pub enum KtestResult {
 }
 
 /// The entry point of the test runner.
+#[cfg(not(miri))]
 #[ostd::ktest::main]
 fn main() {
     use ostd::task::TaskOptions;
@@ -49,9 +51,17 @@ fn main() {
         };
     };
 
-    TaskOptions::new(test_task).data(()).spawn().unwrap();
+    TaskOptions::new(test_task)
+        .data(())
+        .user_space(Some(Arc::new(UserSpace::new(
+            Arc::new(VmSpace::new()),
+            UserContext::default(),
+        ))))
+        .spawn()
+        .unwrap();
 }
 
+#[cfg(not(miri))]
 #[ostd::ktest::panic_handler]
 fn panic_handler(info: &core::panic::PanicInfo) -> ! {
     let _irq_guard = ostd::trap::disable_local();
@@ -74,6 +84,23 @@ fn panic_handler(info: &core::panic::PanicInfo) -> ! {
     early_println!("An uncaught panic occurred: {:#?}", throw_info);
 
     ostd::prelude::abort();
+}
+
+/// The entry point of the miri runner.
+#[ostd::ktest::miri_main]
+fn miri_main() {
+    // use ostd::miri_println;
+
+    // ostd::miri_println!("finish my test");
+}
+
+#[cfg(miri)]
+#[ostd::ktest::panic_handler]
+fn panic_handler(info: &core::panic::PanicInfo) -> ! {
+    use core::intrinsics::abort;
+
+    //core::panic!("try");
+    abort();
 }
 
 /// Run all the tests registered by `#[ktest]` in the `.ktest_array` section.

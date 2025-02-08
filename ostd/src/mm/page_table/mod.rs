@@ -234,7 +234,7 @@ where
     /// Note that this function may fail reflect an accurate result if there are
     /// cursors concurrently accessing the same virtual address range, just like what
     /// happens for the hardware MMU walk.
-    #[cfg(ktest)]
+    #[cfg(miri)]
     pub fn query(&self, vaddr: Vaddr) -> Option<(Paddr, PageProperty)> {
         // SAFETY: The root node is a valid page table node so the address is valid.
         unsafe { page_walk::<E, C>(self.root_paddr(), vaddr) }
@@ -289,7 +289,7 @@ where
 ///
 /// To mitigate this problem, the page table nodes are by default not
 /// actively recycled, until we find an appropriate solution.
-#[cfg(ktest)]
+#[cfg(miri)]
 pub(super) unsafe fn page_walk<E: PageTableEntryTrait, C: PagingConstsTrait>(
     root_paddr: Paddr,
     vaddr: Vaddr,
@@ -303,7 +303,7 @@ pub(super) unsafe fn page_walk<E: PageTableEntryTrait, C: PagingConstsTrait>(
         let node_addr = paddr_to_vaddr(root_paddr);
         let offset = pte_index::<C>(vaddr, cur_level);
         // SAFETY: The offset does not exceed the value of PAGE_SIZE.
-        unsafe { (node_addr as *const E).add(offset).read() }
+        unsafe { ((node_addr + offset * 8) as *const E).read() }
     };
 
     while cur_level > 1 {
@@ -321,7 +321,7 @@ pub(super) unsafe fn page_walk<E: PageTableEntryTrait, C: PagingConstsTrait>(
             let node_addr = paddr_to_vaddr(cur_pte.paddr());
             let offset = pte_index::<C>(vaddr, cur_level);
             // SAFETY: The offset does not exceed the value of PAGE_SIZE.
-            unsafe { (node_addr as *const E).add(offset).read() }
+            unsafe { ((node_addr + offset * 8) as *const E).read() }
         };
     }
 

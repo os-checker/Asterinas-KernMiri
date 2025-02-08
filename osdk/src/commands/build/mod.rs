@@ -123,19 +123,27 @@ pub fn do_cached_build(
     action: ActionChoice,
     rustflags: &[&str],
 ) -> Bundle {
-    let (build, boot) = match action {
-        ActionChoice::Run => (&config.run.build, &config.run.boot),
-        ActionChoice::Test => (&config.test.build, &config.test.boot),
+    let (build, boot, cargo_action, bin_path_prefix) = match action {
+        ActionChoice::Run => (&config.run.build, &config.run.boot, vec!["build"], None),
+        ActionChoice::Test => (&config.test.build, &config.test.boot, vec!["build"], None),
+        ActionChoice::Miri => (
+            &config.test.build,
+            &config.test.boot,
+            vec!["miri", "run"],
+            Some("miri"),
+        ),
     };
 
     let aster_elf = build_kernel_elf(
         config.target_arch,
         &build.profile,
+        &cargo_action,
         &build.features[..],
         build.no_default_features,
         &build.override_configs[..],
         &cargo_target_directory,
         rustflags,
+        bin_path_prefix,
     );
 
     // Check the existing bundle's reusability
@@ -172,6 +180,9 @@ pub fn do_cached_build(
             bundle.consume_aster_bin(aster_elf);
         }
         BootMethod::QemuDirect => {
+            if let ActionChoice::Miri = action {
+                return bundle;
+            }
             let qemu_elf = make_elf_for_qemu(&osdk_output_directory, &aster_elf, build.strip_elf);
             bundle.consume_aster_bin(qemu_elf);
         }
@@ -183,14 +194,20 @@ pub fn do_cached_build(
 fn build_kernel_elf(
     arch: Arch,
     profile: &str,
+    cargo_action: &[&str],
     features: &[String],
     no_default_features: bool,
     override_configs: &[String],
     cargo_target_directory: impl AsRef<Path>,
     rustflags: &[&str],
+    bin_path_prefix: Option<&str>,
 ) -> AsterBin {
     let target_os_string = OsString::from(&arch.triple());
-    let rustc_linker_script_arg = format!("-C link-arg=-T{}.ld", arch);
+    let rustc_linker_script_arg = if bin_path_prefix.is_none() {
+        format!("-C link-arg=-T{}.ld", arch)
+    } else {
+        format!("-C link-arg=-Tmiri.ld")
+    };
 
     let env_rustflags = std::env::var("RUSTFLAGS").unwrap_or_default();
     let mut rustflags = Vec::from(rustflags);
@@ -223,12 +240,16 @@ fn build_kernel_elf(
     let mut command = cargo();
     command.env_remove("RUSTUP_TOOLCHAIN");
     command.env("RUSTFLAGS", rustflags.join(" "));
+    command.args(cargo_action);
     command.arg("build");
     command.arg("--features").arg(features.join(" "));
     if no_default_features {
         command.arg("--no-default-features");
     }
-    command.arg("--target").arg(&target_os_string);
+
+    if bin_path_prefix.is_none() {
+        command.arg("--target").arg(&target_os_string);
+    }
     command
         .arg("--target-dir")
         .arg(cargo_target_directory.as_ref());
@@ -247,8 +268,13 @@ fn build_kernel_elf(
         process::exit(Errno::ExecuteCommand as _);
     }
 
-    let aster_bin_path = cargo_target_directory
-        .as_ref()
+    let aster_bin_path0: std::path::PathBuf = cargo_target_directory.as_ref().to_path_buf();
+    let aster_bin_path1 = if let Some(prefix) = bin_path_prefix {
+        aster_bin_path0.join(prefix)
+    } else {
+        aster_bin_path0
+    };
+    let aster_bin_path = aster_bin_path1
         .join(&target_os_string)
         .join(profile_name_adapter(profile))
         .join(get_current_crate_info().name);

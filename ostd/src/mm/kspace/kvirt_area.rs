@@ -9,17 +9,13 @@ use align_ext::AlignExt;
 
 use super::{KERNEL_PAGE_TABLE, TRACKED_MAPPED_PAGES_RANGE, VMALLOC_VADDR_RANGE};
 use crate::{
-    cpu::CpuSet,
-    mm::{
+    cpu::CpuSet, miri_println, mm::{
         frame::{meta::AnyFrameMeta, Frame},
         page_prop::PageProperty,
         page_table::PageTableItem,
         tlb::{TlbFlushOp, TlbFlusher, FLUSH_ALL_RANGE_THRESHOLD},
         Paddr, Vaddr, PAGE_SIZE,
-    },
-    sync::SpinLock,
-    task::disable_preempt,
-    Error, Result,
+    }, sync::SpinLock, task::disable_preempt, Error, Result
 };
 
 pub struct KVirtAreaFreeNode {
@@ -209,7 +205,8 @@ impl KVirtArea<Tracked> {
         range: Range<Vaddr>,
         pages: impl Iterator<Item = Frame<T>>,
         prop: PageProperty,
-    ) {
+    ) { 
+        miri_println!("map: 0x{:x}-0x{:x}", range.start, range.end);
         assert!(self.start() <= range.start && self.end() >= range.end);
         let page_table = KERNEL_PAGE_TABLE.get().unwrap();
         let mut cursor = page_table.cursor_mut(&range).unwrap();

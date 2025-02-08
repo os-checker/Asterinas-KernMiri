@@ -5,17 +5,14 @@
 //! This module defines what OSTD expects from a scheduling implementation
 //! and provides useful functions for controlling the execution flow.
 
-mod fifo_scheduler;
+pub mod fifo_scheduler;
 pub mod info;
 
 use spin::Once;
 
-use super::{preempt::cpu_local, processor, Task};
+use super::{kernel_stack::KERNEL_STACK_SIZE, preempt::cpu_local, processor::{self, current_task}, Task};
 use crate::{
-    cpu::{CpuId, PinCurrentCpu},
-    prelude::*,
-    task::disable_preempt,
-    timer,
+    cpu::{CpuId, PinCurrentCpu}, miri_println, prelude::*, task::disable_preempt, timer
 };
 
 /// Injects a scheduler implementation into framework.
@@ -33,7 +30,7 @@ pub fn inject_scheduler(scheduler: &'static dyn Scheduler<Task>) {
     });
 }
 
-static SCHEDULER: Once<&'static dyn Scheduler<Task>> = Once::new();
+pub static SCHEDULER: Once<&'static dyn Scheduler<Task>> = Once::new();
 
 /// A per-CPU task scheduler.
 pub trait Scheduler<T = Task>: Sync + Send {
@@ -167,6 +164,30 @@ pub(crate) fn unpark_target(runnable: Arc<Task>) {
     }
 }
 
+pub fn kernel_task_entry(_temp: usize) {
+    // See `switch_to_task` for why we need this.
+    crate::arch::irq::enable_local();
+
+    let current_task = Task::current()
+        .expect("no current task, it should have current task in kernel task entry");
+    
+    let task_func = unsafe { &mut current_task.func.get() };
+    let task_func = task_func
+        .take()
+        .expect("task function is `None` when trying to run");
+    task_func();
+
+    exit_current();
+}
+
+extern "Rust" {    
+    pub fn miri_create_new_thread(func: fn(usize), arg: usize, task: &Task, stack_end: usize, stack_size: usize);
+    
+    pub fn miri_switch_to(task: &Task);
+
+    pub fn miri_load_cpu_local(addr: *const u8) -> *const u8;
+}
+
 /// Enqueues a newly built task.
 ///
 /// Note that the new task is not guaranteed to run at once.
@@ -176,6 +197,9 @@ pub(super) fn run_new_task(runnable: Arc<Task>) {
     // Currently OSTD cannot know whether its user has injected a scheduler.
     if !SCHEDULER.is_completed() {
         fifo_scheduler::init();
+    }
+    unsafe {
+        miri_create_new_thread(kernel_task_entry, 0, runnable.as_ref(), runnable.kstack.end_vaddr(), KERNEL_STACK_SIZE);
     }
 
     let preempt_cpu = SCHEDULER
@@ -203,17 +227,17 @@ fn set_need_preempt(cpu_id: CpuId) {
 ///
 /// This should only be called if the current is to exit.
 #[track_caller]
-pub(super) fn exit_current() -> ! {
+pub fn exit_current() {
     reschedule(|local_rq: &mut dyn LocalRunQueue| {
         let _ = local_rq.dequeue_current();
         if let Some(next_task) = local_rq.pick_next_current() {
             ReschedAction::SwitchTo(next_task.clone())
         } else {
-            ReschedAction::Retry
+            ReschedAction::DoNothing
         }
     });
 
-    unreachable!()
+    //unreachable!()
 }
 
 /// Yields execution.

@@ -4,8 +4,8 @@
 
 use core::{marker::Sync, ops::Deref};
 
-use super::{__cpu_local_end, __cpu_local_start};
-use crate::{arch, cpu::CpuId, trap::DisabledLocalIrqGuard};
+use super::{CPU_LOCAL_END, CPU_LOCAL_START};
+use crate::{arch::{self, cpu::local::get_base, kern_miri_get_cpu_local_va}, cpu::CpuId, miri_println, trap::DisabledLocalIrqGuard};
 
 /// Defines a CPU-local variable.
 ///
@@ -125,9 +125,9 @@ impl<T: 'static> CpuLocal<T> {
     /// Get the offset of the CPU-local object in the CPU-local area.
     fn get_offset(&'static self) -> usize {
         let bsp_va = self as *const _ as usize;
-        let bsp_base = __cpu_local_start as usize;
+        let bsp_base = CPU_LOCAL_START as usize;
         // The implementation should ensure that the CPU-local object resides in the `.cpu_local`.
-        debug_assert!(bsp_va + core::mem::size_of::<T>() <= __cpu_local_end as usize);
+        debug_assert!(bsp_va + core::mem::size_of::<T>() <= CPU_LOCAL_END as usize);
 
         bsp_va - bsp_base
     }
@@ -140,6 +140,9 @@ impl<T: 'static + Sync> CpuLocal<T> {
     ///
     /// Panics if the CPU ID is out of range.
     pub fn get_on_cpu(&'static self, cpu_id: CpuId) -> &'static T {
+        unsafe {
+            let vaddr = *(self as *const _ as *const u8);
+        }
         super::has_init::assert_true();
 
         let cpu_id = cpu_id.as_usize();

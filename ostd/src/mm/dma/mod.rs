@@ -13,6 +13,9 @@ use spin::Once;
 use super::Paddr;
 use crate::{arch::iommu::has_dma_remapping, mm::PAGE_SIZE, sync::SpinLock};
 
+#[cfg(ktest)]
+mod test;
+
 /// The device address.
 ///
 /// If a device performs DMA to read or write system

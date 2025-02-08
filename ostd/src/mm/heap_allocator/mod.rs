@@ -18,6 +18,9 @@ use crate::{
     Error,
 };
 
+#[cfg(ktest)]
+mod test;
+
 #[global_allocator]
 static HEAP_ALLOCATOR: LockedHeapWithRescue = LockedHeapWithRescue::new();
 

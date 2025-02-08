@@ -58,8 +58,11 @@ use super::{
 };
 use crate::{
     arch::mm::{PageTableEntry, PagingConsts},
-    boot::memory_region::MemoryRegionType,
+    boot::memory_region::MemoryRegionType, miri_println,
 };
+
+#[cfg(ktest)]
+mod test;
 
 /// The shortest supported address width is 39 bits. And the literal
 /// values are written for 48 bits address width. Adjust the values
@@ -132,6 +135,7 @@ pub static KERNEL_PAGE_TABLE: Once<PageTable<KernelMode, PageTableEntry, PagingC
 /// This function should be called before:
 ///  - any initializer that modifies the kernel page table.
 pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
+    miri_println!("initializing the kernel page table");
     info!("Initializing the kernel page table");
 
     let regions = &crate::boot::EARLY_INFO.get().unwrap().memory_regions;
@@ -159,6 +163,8 @@ pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
         unsafe {
             kpt.map(&from, &to, prop).unwrap();
         }
+
+        miri_println!("finish linear mapping, mapping physical range: 0x{:x} - 0x{:x}", to.start, to.end);
     }
 
     // Map the metadata pages.
@@ -171,30 +177,32 @@ pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
             priv_flags: PrivilegedPageFlags::GLOBAL,
         };
         let mut cursor = kpt.cursor_mut(&from).unwrap();
+
         for meta_page in meta_pages {
             // SAFETY: we are doing the metadata mappings for the kernel.
             unsafe {
                 let _old = cursor.map(meta_page.into(), prop);
             }
         }
+        miri_println!("finish metadata mapping");
     }
 
     // Map for the I/O area.
     // TODO: we need to have an allocator to allocate kernel space for
     // the I/O areas, rather than doing it using the linear mappings.
-    {
-        let to = 0x8_0000_0000..0x9_0000_0000;
-        let from = LINEAR_MAPPING_BASE_VADDR + to.start..LINEAR_MAPPING_BASE_VADDR + to.end;
-        let prop = PageProperty {
-            flags: PageFlags::RW,
-            cache: CachePolicy::Uncacheable,
-            priv_flags: PrivilegedPageFlags::GLOBAL,
-        };
-        // SAFETY: we are doing I/O mappings for the kernel.
-        unsafe {
-            kpt.map(&from, &to, prop).unwrap();
-        }
-    }
+    // {
+    //     let to = 0x8_0000_0000..0x9_0000_0000;
+    //     let from = LINEAR_MAPPING_BASE_VADDR + to.start..LINEAR_MAPPING_BASE_VADDR + to.end;
+    //     let prop = PageProperty {
+    //         flags: PageFlags::RW,
+    //         cache: CachePolicy::Uncacheable,
+    //         priv_flags: PrivilegedPageFlags::GLOBAL,
+    //     };
+    //     // SAFETY: we are doing I/O mappings for the kernel.
+    //     unsafe {
+    //         kpt.map(&from, &to, prop).unwrap();
+    //     }
+    // }
 
     // Map for the kernel code itself.
     // TODO: set separated permissions for each segments in the kernel.
@@ -220,9 +228,12 @@ pub fn init_kernel_page_table(meta_pages: Segment<MetaPageMeta>) {
                 let _old = cursor.map(page.into(), prop);
             }
         }
+
+        miri_println!("finish kernel code mapping, kernel code virtual address range: 0x{:x} - 0x{:x}", from.start, from.end);
     }
 
     KERNEL_PAGE_TABLE.call_once(|| kpt);
+    miri_println!("finish kernel page table initialization");
 }
 
 /// Activates the kernel page table.

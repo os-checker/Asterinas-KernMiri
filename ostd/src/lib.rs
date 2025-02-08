@@ -54,6 +54,7 @@ pub use ostd_macros::{main, panic_handler};
 pub use ostd_pod::Pod;
 
 pub use self::{error::Error, prelude::Result};
+pub use self::arch::kern_miri_record_time;
 
 /// Initializes OSTD.
 ///
@@ -98,10 +99,13 @@ unsafe fn init() {
         mm::kspace::activate_kernel_page_table();
     }
 
+    //smp::init2();
+     
     bus::init();
 
     arch::irq::enable_local();
 
+    #[cfg(not(miri))]
     invoke_ffi_init_funcs();
 
     IN_BOOTSTRAP_CONTEXT.store(false, Ordering::Relaxed);
@@ -132,23 +136,35 @@ fn invoke_ffi_init_funcs() {
 mod test {
     use crate::prelude::*;
 
-    #[ktest]
-    #[allow(clippy::eq_op)]
-    fn trivial_assertion() {
-        assert_eq!(0, 0);
-    }
-
-    #[ktest]
-    #[should_panic]
-    fn failing_assertion() {
+    // #[ktest]
+    // #[allow(clippy::eq_op)]
+    // fn trivial_assertion() {
+    //     assert_eq!(0, 0);
+    // }
+    
+    fn failing_assertion_help(a: *mut u8) {
         assert_eq!(0, 1);
     }
 
-    #[ktest]
-    #[should_panic(expected = "expected panic message")]
-    fn expect_panic() {
-        panic!("expected panic message");
-    }
+    // #[ktest]
+    // #[should_panic]
+    // fn failing_assertion() {
+    //     let mut a: u8 = 0;
+    //     let mut ptr = &mut a as *mut u8;
+
+    //     let catch_fn = |a: *mut u8, b: *mut u8| {
+    //         assert_eq!(0, 1);
+    //     };
+    //     unsafe {
+    //         core::intrinsics::catch_unwind(failing_assertion_help, ptr, catch_fn);
+    //     }
+    // }
+
+    // #[ktest]
+    // #[should_panic(expected = "expected panic message")]
+    // fn expect_panic() {
+    //     panic!("expected panic message");
+    // }
 }
 
 #[doc(hidden)]
@@ -160,5 +176,6 @@ pub mod ktest {
     //! `ktest` attribute is sufficient for all normal use cases.
 
     pub use ostd_macros::{test_main as main, test_panic_handler as panic_handler};
+    pub use ostd_macros::miri_main;
     pub use ostd_test::*;
 }

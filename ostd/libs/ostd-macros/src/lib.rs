@@ -7,6 +7,8 @@ use quote::quote;
 use rand::{distributions::Alphanumeric, Rng};
 use syn::{parse_macro_input, Expr, Ident, ItemFn};
 
+static mut A_VALUE: usize = 0;
+
 /// A macro attribute to mark the kernel entry point.
 ///
 /// # Example
@@ -60,6 +62,67 @@ pub fn test_main(_attr: TokenStream, item: TokenStream) -> TokenStream {
             unreachable!("`yield_now` in the boot context should not return");
         }
 
+        #main_fn
+    )
+    .into()
+}
+
+#[proc_macro_attribute]
+pub fn miri_main(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let main_fn = parse_macro_input!(item as ItemFn);
+    let main_fn_name = &main_fn.sig.ident;
+    
+    let mut extern_declarations = Vec::new();
+    let mut function_calls = Vec::new();
+    for i in 1..=80 {
+        let test_name = syn::Ident::new(&format!("ktest_ostd_extern_{}", i), proc_macro2::Span::call_site());
+        extern_declarations.push(quote! {
+            fn #test_name();
+        });
+        function_calls.push(quote! {
+            #test_name();
+        });
+    }
+
+    let expanded = quote! {
+        extern "Rust" {
+            #(#extern_declarations)*
+        }
+    };
+
+    let expanded_calls = quote! {
+        #(#function_calls)*
+    };
+
+    quote!(
+        #[cfg(miri)]
+        #expanded
+
+        #[cfg(miri)]
+        #[no_mangle]
+        extern "Rust" fn __ostd_main() {
+            #main_fn_name();
+
+            let task0 = move || {
+                unsafe {
+                    #expanded_calls();
+                }
+            };
+
+            let task0 = alloc::sync::Arc::new(
+                ostd::task::TaskOptions::new(task0)
+                    .data(())
+                    .build()
+                    .unwrap(),
+            );
+
+            task0.run();
+            ostd::task::Task::yield_now();
+            ostd::miri_println!("finish running");
+            //core::intrinsics::abort();
+        }
+
+        #[cfg(miri)]
         #main_fn
     )
     .into()
@@ -248,11 +311,35 @@ pub fn ktest(_attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
 
-    let output = quote! {
-        #input
-
-        #register_ktest_item
+    let name = unsafe { 
+        A_VALUE += 1;
+        if package_name.as_str() == "ostd" {
+            syn::Ident::new(&format!("ktest_ostd_extern_{}", A_VALUE), proc_macro2::Span::call_site())
+        } else {
+            syn::Ident::new(&format!("ktest_test_extern_{}", A_VALUE), proc_macro2::Span::call_site())
+        }
     };
 
-    TokenStream::from(output)
+    unsafe {
+        let register_extern = 
+        quote! {
+            #[no_mangle]
+            pub extern "Rust" fn #name(){
+                unsafe {
+                    crate::miri_println!("invoke: {:?}, {}", stringify!(#fn_name), #A_VALUE);
+                    crate::miri_record!(#A_VALUE);
+                }
+                #fn_name();
+            }
+        };
+
+        let output = quote! {
+            #register_extern
+
+            #input
+
+            #register_ktest_item
+        };
+        TokenStream::from(output)
+    }
 }

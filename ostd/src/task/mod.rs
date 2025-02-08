@@ -17,7 +17,7 @@ use core::{
     ptr::NonNull,
 };
 
-use kernel_stack::KernelStack;
+pub use kernel_stack::{KERNEL_STACK_SIZE, KernelStack};
 pub(crate) use preempt::cpu_local::reset_preempt_info;
 use processor::current_task;
 use utils::ForceSync;
@@ -37,7 +37,7 @@ use crate::{prelude::*, trap::in_interrupt_context, user::UserSpace};
 #[derive(Debug)]
 pub struct Task {
     #[allow(clippy::type_complexity)]
-    func: ForceSync<Cell<Option<Box<dyn FnOnce() + Send>>>>,
+    pub func: ForceSync<Cell<Option<Box<dyn FnOnce() + Send>>>>,
 
     data: Box<dyn Any + Send + Sync>,
     local_data: ForceSync<Box<dyn Any + Send>>,
@@ -46,7 +46,7 @@ pub struct Task {
     ctx: SyncUnsafeCell<TaskContext>,
     /// kernel stack, note that the top is SyscallFrame/TrapFrame
     #[allow(dead_code)]
-    kstack: KernelStack,
+    pub kstack: KernelStack,
 
     schedule_info: TaskScheduleInfo,
 }
@@ -124,7 +124,7 @@ impl Task {
             return;
         };
 
-        user_space.fpu_state().save();
+        //user_space.fpu_state().save();
     }
 
     /// Restores the FPU state for user task.
@@ -133,7 +133,7 @@ impl Task {
             return;
         };
 
-        user_space.fpu_state().restore();
+        //user_space.fpu_state().restore();
     }
 }
 
@@ -196,14 +196,14 @@ impl TaskOptions {
     pub fn build(self) -> Result<Task> {
         /// all task will entering this function
         /// this function is mean to executing the task_fn in Task
-        extern "C" fn kernel_task_entry() -> ! {
+        extern "C" fn kernel_task_entry() {
             // See `switch_to_task` for why we need this.
             crate::arch::irq::enable_local();
 
             let current_task = Task::current()
                 .expect("no current task, it should have current task in kernel task entry");
 
-            current_task.restore_fpu_state();
+            //current_task.restore_fpu_state();
 
             // SAFETY: The `func` field will only be accessed by the current task in the task
             // context, so the data won't be accessed concurrently.

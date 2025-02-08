@@ -75,12 +75,11 @@ use super::{
     PagingLevel, RawPageTableNode, UserMode,
 };
 use crate::{
-    mm::{
+    miri_println, mm::{
         frame::{meta::AnyFrameMeta, Frame},
         kspace::should_map_as_tracked,
         paddr_to_vaddr, Paddr, PageProperty, Vaddr,
-    },
-    task::{disable_preempt, DisabledPreemptGuard},
+    }, task::{disable_preempt, DisabledPreemptGuard}
 };
 
 #[derive(Clone, Debug)]
@@ -188,7 +187,8 @@ where
             // SAFETY: The pointer and index is valid since the root page table
             // does not short-live it. The child page table node won't be
             // recycled by another thread while we are using it.
-            let cur_pte = unsafe { cur_pt_ptr.add(start_idx).read() };
+            let address = cur_pt_ptr as usize + start_idx * 8;
+            let cur_pte = unsafe { (address as *mut E).read() };
             if cur_pte.is_present() {
                 if cur_pte.is_last(cursor.level) {
                     break;
@@ -206,6 +206,7 @@ where
         let raw = unsafe { RawPageTableNode::<E, C>::from_raw_parts(cur_pt_addr, cursor.level) };
         let _inc_ref = ManuallyDrop::new(raw.clone_shallow());
         let lock = raw.lock();
+        
         cursor.guards[cursor.level as usize - 1] = Some(lock);
         cursor.guard_level = cursor.level;
 
@@ -810,7 +811,8 @@ where
 
                     // Do copy.
                     op(&mut prop);
-                    self.jump(src_va).unwrap();
+                    self.jump(self.0.barrier_va.start + src_va - src.0.barrier_va.start)
+                        .unwrap();
                     let original = self.map(page, prop);
                     assert!(original.is_none());
 

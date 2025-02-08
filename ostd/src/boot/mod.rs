@@ -114,11 +114,11 @@ pub(crate) fn init_after_heap() {
 /// `ostd::main` as the entrypoint.
 ///
 /// This function should be only called from the bootloader-specific module.
-pub(crate) fn call_ostd_main() -> ! {
+pub(crate) fn call_ostd_main() {
     // The entry point of kernel code, which should be defined by the package that
     // uses OSTD.
     extern "Rust" {
-        fn __ostd_main() -> !;
+        fn __ostd_main();
     }
 
     // SAFETY: The function is called only once on the BSP.
