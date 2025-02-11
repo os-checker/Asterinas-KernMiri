@@ -11,7 +11,7 @@ use std::time::{Duration, SystemTime};
 use alloc_addresses::page_table::KERNEL_CODE_BASE_VADDR;
 use either::Either;
 use machine::CPU_NUM;
-use physical_mem::{paddr_to_mem, PageState, TypedKind, KERNEL_MEM, PAGE_SIZE, PAGE_STATES, STACK_BEGIN};
+use physical_mem::{paddr_to_mem, PageState, TypedKind, CPU_LOCAL_BEGIN, KERNEL_MEM, PAGE_SIZE, PAGE_STATES, STACK_BEGIN};
 use rustc_abi::ExternAbi;
 use rustc_const_eval::CTRL_C_RECEIVED;
 use rustc_data_structures::fx::FxHashMap;
@@ -479,6 +479,8 @@ pub struct ThreadManager<'tcx> {
     pub next_cpu: Option<usize>,
 
     pub cpu_to_threads: [Option<ThreadId>; crate::machine::CPU_NUM],
+
+    pub cpu_local_base: [usize; crate::machine::CPU_NUM],
     /// Threads used in the program.
     ///
     /// Note that this vector also contains terminated threads.
@@ -500,6 +502,7 @@ impl VisitProvenance for ThreadManager<'_> {
             next_cpu: _,
             active_cpu: _,
             cpu_to_threads: _,
+            cpu_local_base: _,
             yield_active_thread: _,
             next_thread: _
         } = self;
@@ -517,13 +520,14 @@ impl<'tcx> Default for ThreadManager<'tcx> {
     fn default() -> Self {
         let mut threads = IndexVec::new();
         // Create the main thread and add it to the list of threads.
-        threads.push(Thread::new(Some("main"), None, (STACK_BEGIN as u64 + KERNEL_CODE_BASE_VADDR as u64)..(KERNEL_MEM as u64 + KERNEL_CODE_BASE_VADDR as u64)));
+        threads.push(Thread::new(Some("main"), None, (STACK_BEGIN as u64 + KERNEL_CODE_BASE_VADDR as u64)..(CPU_LOCAL_BEGIN + KERNEL_CODE_BASE_VADDR as u64)));
         let mut cpu_to_threads = [None; CPU_NUM];
         cpu_to_threads[0] = Some(ThreadId::MAIN_THREAD);
         
         Self {
             active_thread: ThreadId::MAIN_THREAD,
             cpu_to_threads,
+            cpu_local_base: [0; CPU_NUM],
             active_cpu: 0,
             next_cpu: None,
             threads,
@@ -546,6 +550,10 @@ impl<'tcx> ThreadManager<'tcx> {
             ecx.machine.threads.threads[ThreadId::MAIN_THREAD].join_status =
                 ThreadJoinStatus::Detached;
         }
+    }
+
+    pub fn current_cpu_local_base(&self) -> usize {
+        self.cpu_local_base[1]
     }
 
     /// Check if we have an allocation for the given thread local static for the

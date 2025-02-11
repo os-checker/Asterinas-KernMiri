@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::cmp::max;
 
 use page_table::{PageTable, KERNEL_CODE_BASE_VADDR};
-use physical_mem::{create_allocation_at, PageState, BASE_BEGIN, KERNEL_MEM, PAGE_SIZE, PAGE_STATES, STACK_BEGIN};
+use physical_mem::{create_allocation_at, PageState, BASE_BEGIN, CPU_LOCAL_BEGIN, CPU_LOCAL_END, CPU_LOCAL_SIZE, KERNEL_MEM, PAGE_SIZE, PAGE_STATES, STACK_BEGIN};
 use rand::Rng;
 use rustc_abi::{Align, Size};
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
@@ -58,6 +58,8 @@ pub struct GlobalStateInner {
     /// is always larger than any address that was previously made part of a block.
     next_base_addr: u64,
 
+    next_cpu_local_addr: u64,
+
     pub next_stack_addr: u64,
 
     pub stack: Vec<u64>,
@@ -77,6 +79,7 @@ impl VisitProvenance for GlobalStateInner {
             exposed: _,
             next_base_addr: _,
             next_stack_addr: _,
+            next_cpu_local_addr: _,
             stack: _,
             provenance_mode: _,
             page_table: _,
@@ -99,7 +102,8 @@ impl GlobalStateInner {
             reuse: ReusePool::new(config),
             exposed: FxHashSet::default(),
             next_base_addr: stack_addr,
-            next_stack_addr: (KERNEL_MEM + KERNEL_CODE_BASE_VADDR) as u64,
+            next_stack_addr: (CPU_LOCAL_BEGIN as usize + KERNEL_CODE_BASE_VADDR) as u64,
+            next_cpu_local_addr: (CPU_LOCAL_BEGIN as usize + KERNEL_CODE_BASE_VADDR) as u64,
             stack: Vec::new(),
             provenance_mode: config.provenance_mode,
             page_table: None,
@@ -147,6 +151,8 @@ fn align_addr(addr: u64, align: u64) -> u64 {
 }
 
 impl<'tcx> EvalContextExtPriv<'tcx> for crate::MiriInterpCx<'tcx> {}
+
+#[allow(invalid_reference_casting)]
 pub trait EvalContextExtPriv<'tcx>: crate::MiriInterpCxExt<'tcx> {
     // Returns the exposed `AllocId` that corresponds to the specified addr,
     // or `None` if the addr is out of bounds
@@ -196,24 +202,89 @@ pub trait EvalContextExtPriv<'tcx>: crate::MiriInterpCxExt<'tcx> {
                     return Some(alloc_id);
                 }
 
-                if let PageState::Untyped = page_info {
-                    let mut alloc_map = ecx.memory.alloc_map().0.borrow_mut();
-                    
-                    let alloc_id = ecx.tcx.reserve_alloc_id();
-                    let actual_addr = addr - addr % 4096;
-                    let kind = rustc_const_eval::interpret::MemoryKind::Machine(MiriMemoryKind::Kernel);
-                    let allocation = {
-                        let allocation = create_allocation_at(actual_addr, Layout::from_size_align(4096, 4096).unwrap());
-                        let extra = MiriMachine::init_alloc_extra(ecx, alloc_id, kind, allocation.size(), allocation.align).unwrap();
-                        allocation.with_extra(extra)
+                let current_cpu_local_base = ecx.machine.threads.current_cpu_local_base();
+                if (current_cpu_local_base..current_cpu_local_base + CPU_LOCAL_SIZE as usize).contains(&(vaddr as usize)) {
+                    let original_vaddr = ecx.machine.threads.cpu_local_base[0] + vaddr as usize - current_cpu_local_base;
+                    let original_addr = if let Some(page_table) = &global_state.page_table {
+                        page_table.page_walk(original_vaddr as usize)? as u64
+                    } else {
+                        original_vaddr as u64
                     };
+                    
+                    let original_pos = global_state.int_to_ptr_map.binary_search_by_key(&original_addr, |(original_addr, _)| *original_addr);
+                    let (original_alloc_id, offset) = match original_pos {
+                        Ok(original_pos) => Some((global_state.int_to_ptr_map[original_pos].1, 0)),
+                        Err(0) => {
+                            None
+                        },
+                        Err(original_pos) => {
+                            let (glb, alloc_id) = global_state.int_to_ptr_map[original_pos - 1];
+                            let offset = original_addr - glb;
+                            let size = ecx.get_alloc_info(alloc_id).0;
 
-                    alloc_map.insert(alloc_id, Box::new((kind, allocation)));
+                            if offset < size.bytes() { Some((alloc_id, offset)) } else {
+                                panic!("nonononono");
+                            }
+                        }
+                    }.unwrap();
+
+                    let original_alloc_info = ecx.get_alloc_info(original_alloc_id);
+                    let (kind, original_alloc) = &ecx.memory.alloc_map().get(original_alloc_id).unwrap();
+                    let kind = *kind;
+                    let new_alloc_id = ecx.tcx.reserve_alloc_id();
+                    let allocation = {
+                        let mut new_allocation = create_allocation_at(addr - offset as usize, Layout::from_size_align(original_alloc_info.0.bytes_usize(), original_alloc_info.1.bytes_usize()).unwrap());
+                        let extra = MiriMachine::init_alloc_extra(ecx, new_alloc_id, kind, original_alloc_info.0, original_alloc_info.1).unwrap();
+                        
+                        let alloc_range = rustc_middle::mir::interpret::alloc_range(Size::ZERO, original_alloc.size());
+                        let init_mask = original_alloc.init_mask();
+
+                        if !init_mask.is_range_initialized(alloc_range).is_err_and(|range| range.start == alloc_range.start && range.size == alloc_range.size) {
+                            let alloc_size_usize = original_alloc.size().bytes_usize();
+                            let src_ptr = original_alloc.get_bytes_unchecked_raw();
+                            let mut dst_ptr = new_allocation.get_bytes_unchecked_raw_mut();
+                            unsafe {
+                                core::ptr::copy(src_ptr, dst_ptr, alloc_size_usize);
+                            }
+            
+                            // Copy mask
+                            let init_copy = init_mask.prepare_copy((0..alloc_size_usize).into());
+                            new_allocation.init_mask_apply_copy(init_copy, alloc_range, 1);
+            
+                            // Copy provenance
+                            let provenance_copy = original_alloc.provenance().prepare_copy(alloc_range, Size::ZERO, 1, ecx).unwrap();
+                            new_allocation.provenance_apply_copy(provenance_copy);
+                        }
+                        
+                        new_allocation.with_extra(extra)
+                    };
+                    drop(original_alloc);
+                    ecx.machine.cpu_alloc_set.borrow_mut().insert(new_alloc_id);
+                    ecx.memory.alloc_map().0.borrow_mut().insert(new_alloc_id, Box::new((kind, allocation)));
                     drop(global_state);
                     let mut global_state = ecx.machine.alloc_addresses.borrow_mut();
-                    global_state.set_address(alloc_id, actual_addr);
-                    return Some(alloc_id);
+                    global_state.set_address(new_alloc_id, addr - offset as usize);
+                    return Some(new_alloc_id);
                 }
+
+                // if let PageState::Untyped = page_info {
+                //     let mut alloc_map = ecx.memory.alloc_map().0.borrow_mut();
+                    
+                //     let alloc_id = ecx.tcx.reserve_alloc_id();
+                //     let actual_addr = addr - addr % 4096;
+                //     let kind = rustc_const_eval::interpret::MemoryKind::Machine(MiriMemoryKind::Kernel);
+                //     let allocation = {
+                //         let allocation = create_allocation_at(actual_addr, Layout::from_size_align(4096, 4096).unwrap());
+                //         let extra = MiriMachine::init_alloc_extra(ecx, alloc_id, kind, allocation.size(), allocation.align).unwrap();
+                //         allocation.with_extra(extra)
+                //     };
+
+                //     alloc_map.insert(alloc_id, Box::new((kind, allocation)));
+                //     drop(global_state);
+                //     let mut global_state = ecx.machine.alloc_addresses.borrow_mut();
+                //     global_state.set_address(alloc_id, actual_addr);
+                //     return Some(alloc_id);
+                // }
                 
                 return None;
             },
@@ -255,23 +326,75 @@ pub trait EvalContextExtPriv<'tcx>: crate::MiriInterpCxExt<'tcx> {
                         return Some(alloc_id);
                     }
 
-                    if let PageState::Untyped = page_info {
-                        let mut alloc_map = ecx.memory.alloc_map().0.borrow_mut();
-                        
-                        let alloc_id = ecx.tcx.reserve_alloc_id();
-                        let actual_addr = addr - addr % 4096;
-                        let kind = rustc_const_eval::interpret::MemoryKind::Machine(MiriMemoryKind::Kernel);
-                        let allocation = {
-                            let allocation = create_allocation_at(actual_addr, Layout::from_size_align(4096, 4096).unwrap());
-                            let extra = MiriMachine::init_alloc_extra(ecx, alloc_id, kind, allocation.size(), allocation.align).unwrap();
-                            allocation.with_extra(extra)
+                    let current_cpu_local_base = ecx.machine.threads.current_cpu_local_base();
+                    if (current_cpu_local_base..current_cpu_local_base + CPU_LOCAL_SIZE as usize).contains(&(vaddr as usize)) {
+                        let original_vaddr = ecx.machine.threads.cpu_local_base[0] + vaddr as usize - current_cpu_local_base;
+                        let original_addr = if let Some(page_table) = &global_state.page_table {
+                            page_table.page_walk(original_vaddr as usize)? as u64
+                        } else {
+                            original_vaddr as u64
                         };
+                        
+                        let original_pos = global_state.int_to_ptr_map.binary_search_by_key(&original_addr, |(original_addr, _)| *original_addr);
+                        let (original_alloc_id, offset) = match original_pos {
+                            Ok(original_pos) => Some((global_state.int_to_ptr_map[original_pos].1, 0)),
+                            Err(0) => {
+                                None
+                            },
+                            Err(original_pos) => {
+                                let (glb, alloc_id) = global_state.int_to_ptr_map[original_pos - 1];
+                                let offset = original_addr - glb;
+                                let size = ecx.get_alloc_info(alloc_id).0;
     
-                        alloc_map.insert(alloc_id, Box::new((kind, allocation)));
+                                if offset < size.bytes() { Some((alloc_id, offset)) } else {
+                                    panic!();
+                                }
+                            }
+                        }.unwrap();
+    
+                        let original_alloc_info = ecx.get_alloc_info(original_alloc_id);
+                        
+                        let new_alloc_id = ecx.tcx.reserve_alloc_id();
+                        
+                        let (kind, original_alloc) = 
+                            &ecx.memory.alloc_map().get(original_alloc_id).unwrap();
+                        let kind = *kind;
+                        let allocation = {
+                            let mut new_allocation = create_allocation_at(addr - offset as usize, Layout::from_size_align(original_alloc_info.0.bytes_usize(), original_alloc_info.1.bytes_usize()).unwrap());
+                            let extra = MiriMachine::init_alloc_extra(ecx, new_alloc_id, kind, original_alloc_info.0, original_alloc_info.1).unwrap();
+                            
+                            
+                            let alloc_range = rustc_middle::mir::interpret::alloc_range(Size::ZERO, original_alloc.size());
+                            let init_mask = original_alloc.init_mask();
+    
+                            if !init_mask.is_range_initialized(alloc_range).is_err_and(|range| range.start == alloc_range.start && range.size == alloc_range.size) {
+                                let alloc_size_usize = original_alloc.size().bytes_usize();
+                                let src_ptr = original_alloc.get_bytes_unchecked_raw();
+                                let mut dst_ptr = new_allocation.get_bytes_unchecked_raw_mut();
+                                unsafe {
+                                    core::ptr::copy(src_ptr, dst_ptr, alloc_size_usize);
+                                }
+                
+                                // Copy mask
+                                let init_copy = init_mask.prepare_copy((0..alloc_size_usize).into());
+                                new_allocation.init_mask_apply_copy(init_copy, alloc_range, 1);
+                
+                                // Copy provenance
+                                let provenance_copy = original_alloc.provenance().prepare_copy(alloc_range, Size::ZERO, 1, ecx).unwrap();
+                                new_allocation.provenance_apply_copy(provenance_copy);
+                            }
+                            
+                            new_allocation.with_extra(extra)
+                        };
+                        
+                        ecx.memory.alloc_map().0.borrow_mut().insert(new_alloc_id, Box::new((kind, allocation)));
+                        drop(original_alloc);
                         drop(global_state);
+                        ecx.machine.cpu_alloc_set.borrow_mut().insert(new_alloc_id);
                         let mut global_state = ecx.machine.alloc_addresses.borrow_mut();
-                        global_state.set_address(alloc_id, actual_addr);
-                        return Some(alloc_id);
+                        global_state.set_address(new_alloc_id, addr - offset as usize);
+                        
+                        return Some(new_alloc_id);
                     }
 
                     return None;
@@ -364,17 +487,22 @@ pub trait EvalContextExtPriv<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 
                 base_addr
             } else {
+                let (mut next_address, limit) = if ecx.machine.cpu_alloc_set.borrow().contains(&alloc_id) {
+                    (&mut global_state.next_cpu_local_addr, CPU_LOCAL_END + KERNEL_CODE_BASE_VADDR as u64)
+                } else {
+                    (&mut global_state.next_base_addr, STACK_BEGIN + KERNEL_CODE_BASE_VADDR as u64)
+                };
+
                 // We have to pick a fresh address.
                 // Leave some space to the previous allocation, to give it some chance to be less aligned.
                 // We ensure that `(global_state.next_base_addr + slack) % 16` is uniformly distributed.
                 let slack = rng.gen_range(0..16);
                 // From next_base_addr + slack, round up to adjust for alignment.
-                let base_addr = global_state
-                    .next_base_addr
+                let base_addr = next_address
                     .checked_add(slack)
                     .ok_or_else(|| err_exhaust!(AddressSpaceFull))?;
                 let base_addr = align_addr(base_addr, align.bytes());
-                if base_addr >= STACK_BEGIN + KERNEL_CODE_BASE_VADDR as u64 {
+                if base_addr >= limit {
                     throw_exhaust!(AddressSpaceFull);
                 }
 
@@ -382,11 +510,11 @@ pub trait EvalContextExtPriv<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 // least 1 to avoid two allocations having the same base address. (The logic in
                 // `alloc_id_from_addr` assumes unique addresses, and different function/vtable pointers
                 // need to be distinguishable!)
-                global_state.next_base_addr = base_addr
+                *next_address = base_addr
                     .checked_add(max(size.bytes(), 1))
                     .ok_or_else(|| err_exhaust!(AddressSpaceFull))?;
                 // Even if `Size` didn't overflow, we might still have filled up the address space.
-                if global_state.next_base_addr > ecx.target_usize_max() {
+                if *next_address > ecx.target_usize_max() {
                     throw_exhaust!(AddressSpaceFull);
                 }
                 base_addr
@@ -525,15 +653,42 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
         };
         let alloc_map = &ecx.memory.alloc_map();
 
-        if (base_paddr < KERNEL_MEM as u64) && (base_paddr >= BASE_BEGIN) && kind == MemoryKind::Stack.into() {
-            let (new_allocation, kind) = {
-                let (kind, old_allocation) = &alloc_map.get(alloc_id).unwrap();
-                let allocation = create_allocation_at(base_paddr as usize, Layout::from_size_align(old_allocation.size().bytes_usize(), old_allocation.align.bytes_usize()).unwrap());
-                let extra = MiriMachine::init_alloc_extra(ecx, alloc_id, *kind, old_allocation.size(), old_allocation.align)?;
-                (allocation.with_extra(extra), *kind)
-            };
+        if base_paddr >= BASE_BEGIN && kind == MemoryKind::Stack.into() {
+            let (kind, old_allocation) = &alloc_map.get(alloc_id).unwrap();
+            let alloc_size_usize = old_allocation.size().bytes_usize();
+            if alloc_size_usize > 0 {
+                let (new_allocation, kind) = {
+                    
+                    let mut allocation = create_allocation_at(base_paddr as usize, Layout::from_size_align(old_allocation.size().bytes_usize(), old_allocation.align.bytes_usize()).unwrap());
+                    let extra = MiriMachine::init_alloc_extra(ecx, alloc_id, *kind, old_allocation.size(), old_allocation.align)?;
+                    
+                    let alloc_range = rustc_middle::mir::interpret::alloc_range(Size::ZERO, old_allocation.size());
+                    let init_mask = old_allocation.init_mask();
+                    
+                    if unsafe {*(old_allocation.get_bytes_unchecked_raw() as *const u8)} == 0xAA {
+                        println!("AA size: {:?}", alloc_size_usize);
+                    }
+                    if !init_mask.is_range_initialized(alloc_range).is_err_and(|range| range.start == alloc_range.start && range.size == alloc_range.size) {
+                        // Copy context
+                        let src_ptr = old_allocation.get_bytes_unchecked_raw();
+                        let mut dst_ptr = allocation.get_bytes_unchecked_raw_mut();
+                        unsafe {
+                            core::ptr::copy(src_ptr, dst_ptr, alloc_size_usize);
+                        }
+        
+                        // Copy mask
+                        let init_copy = init_mask.prepare_copy((0..alloc_size_usize).into());
+                        allocation.init_mask_apply_copy(init_copy, alloc_range, 1);
+        
+                        // Copy provenance
+                        let provenance_copy = old_allocation.provenance().prepare_copy(alloc_range, Size::ZERO, 1, ecx).unwrap();
+                        allocation.provenance_apply_copy(provenance_copy);
+                    }
+                    (allocation.with_extra(extra), *kind)
+                }; 
 
-            alloc_map.0.borrow_mut().insert(alloc_id, Box::new((kind,new_allocation)));
+                alloc_map.0.borrow_mut().insert(alloc_id, Box::new((kind,new_allocation)));
+            }
         }
         // Get a pointer to the beginning of this allocation.
         

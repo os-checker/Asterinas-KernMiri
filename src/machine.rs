@@ -1239,6 +1239,18 @@ impl<'tcx> Machine<'tcx> for MiriMachine<'tcx> {
     ) -> InterpResult<'tcx, interpret::Pointer<Provenance>> {
         let kind = kind.expect("we set our GLOBAL_KIND so this cannot be None");
         let alloc_id = ptr.provenance.alloc_id();
+
+        if kind == MiriMemoryKind::Global.into() {
+            if let Some(GlobalAlloc::Static(def_id)) = ecx.tcx.try_get_global_alloc(alloc_id) {
+                let attrs = ecx.tcx.codegen_fn_attrs(def_id);
+                if let Some(section) = attrs.link_section {
+                    if section.as_str() == ".cpu_local" {
+                        ecx.machine.cpu_alloc_set.borrow_mut().insert(alloc_id);
+                    }
+                }
+            }
+        }
+
         if cfg!(debug_assertions) {
             // The machine promises to never call us on thread-local or extern statics.
             match ecx.tcx.try_get_global_alloc(alloc_id) {
@@ -1319,7 +1331,6 @@ impl<'tcx> Machine<'tcx> for MiriMachine<'tcx> {
         let Some(id) = static_def_id else {
             return interp_ok(());
         };
-
         let attrs = tcx.codegen_fn_attrs(id);
         if let Some(section) = attrs.link_section {
             if section.as_str() == ".cpu_local" {
@@ -1394,28 +1405,28 @@ impl<'tcx> Machine<'tcx> for MiriMachine<'tcx> {
         };
 
         //let final_alloc = final_alloc.with_extra(extra);
-        if ecx.machine.cpu_alloc_set.borrow().get(&id).is_some() {
-            for cpu_id in 1..CPU_NUM {
-                let alloc_clone = alloc.clone();
-                let ap_id = ecx.tcx.reserve_alloc_id();
-                let allocation = alloc_clone.adjust_from_tcx(
-                    &ecx.tcx,
-                    |bytes, align| ecx.get_global_alloc_bytes(ap_id, kind, bytes, align),
-                    |ptr| ecx.global_root_pointer(ptr),
-                )?;
-                let extra = Self::init_alloc_extra(ecx, ap_id, kind, allocation.size(), allocation.align)?;
-                let allocation = allocation.with_extra(extra);
+        // if ecx.machine.cpu_alloc_set.borrow().get(&id).is_some() {
+        //     for cpu_id in 1..CPU_NUM {
+        //         let alloc_clone = alloc.clone();
+        //         let ap_id = ecx.tcx.reserve_alloc_id();
+        //         let allocation = alloc_clone.adjust_from_tcx(
+        //             &ecx.tcx,
+        //             |bytes, align| ecx.get_global_alloc_bytes(ap_id, kind, bytes, align),
+        //             |ptr| ecx.global_root_pointer(ptr),
+        //         )?;
+        //         let extra = Self::init_alloc_extra(ecx, ap_id, kind, allocation.size(), allocation.align)?;
+        //         let allocation = allocation.with_extra(extra);
             
-                ecx.memory.alloc_map().0.borrow_mut().insert(ap_id, Box::new((kind, allocation)));
+        //         ecx.memory.alloc_map().0.borrow_mut().insert(ap_id, Box::new((kind, allocation)));
 
-                let this = ecx.eval_context_ref();
-                let address = this.addr_from_alloc_id(ap_id, kind).unwrap();
-                this.machine.alloc_addresses.borrow_mut().exposed.insert(ap_id);
-                //println!("final_address: {:x} -> {:x}, {:?}", final_address, address, id);
-                ecx.machine.cpu_alloc.borrow_mut().insert((cpu_id, final_address as usize), address as usize);
-                ecx.machine.cpu_alloc_set.borrow_mut().insert(ap_id);
-            }
-        }
+        //         let this = ecx.eval_context_ref();
+        //         let address = this.addr_from_alloc_id(ap_id, kind).unwrap();
+        //         this.machine.alloc_addresses.borrow_mut().exposed.insert(ap_id);
+        //         //println!("final_address: {:x} -> {:x}, {:?}", final_address, address, id);
+        //         ecx.machine.cpu_alloc.borrow_mut().insert((cpu_id, final_address as usize), address as usize);
+        //         ecx.machine.cpu_alloc_set.borrow_mut().insert(ap_id);
+        //     }
+        // }
 
         interp_ok(Cow::Owned(final_alloc))
     }
@@ -1627,7 +1638,7 @@ impl<'tcx> Machine<'tcx> for MiriMachine<'tcx> {
 
         // These are our preemption points.
         ecx.maybe_preempt_active_thread();
-        //ecx.maybe_switch_cpu();
+        ecx.maybe_switch_cpu();
 
         // Make sure some time passes.
         ecx.machine.clock.tick();

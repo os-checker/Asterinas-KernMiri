@@ -511,8 +511,22 @@ trait EvalContextExtPriv<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 this.machine.record.push(since_epoch);
             }
 
-
             // OS thread operations
+            "kern_miri_get_cpu_local_base" => {
+                let current_cpu = this.machine.threads.active_cpu;
+                this.write_scalar(
+                    Scalar::from_target_usize(this.machine.threads.cpu_local_base[current_cpu] as u64, this),
+                    dest,
+                )?;
+            }
+
+            "kern_miri_set_cpu_local_base" => {
+                let [cpu_base] = this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
+                let cpu_base = this.read_target_usize(cpu_base)?;
+                let current_cpu = this.machine.threads.active_cpu;
+                this.machine.threads.cpu_local_base[current_cpu] = cpu_base as usize;
+            }
+
             "kern_miri_init_ap" => {
                 let [cpu_id, func, args, task, stack_end, stack_size] = this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
                 let cpu_id = this.read_target_usize(cpu_id)?;
@@ -652,34 +666,39 @@ trait EvalContextExtPriv<'tcx>: crate::MiriInterpCxExt<'tcx> {
                     this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
                 let vaddr = this.read_target_usize(cpu_local_va)? as usize;
 
-                let cpu = this.machine.threads.active_cpu;
-                if cpu == 0 {
-                    this.write_scalar(
-                        Scalar::from_target_usize(vaddr as u64, this),
-                        dest,
-                    )?;
-                } else {
-                    let actual_vaddr = *this.machine.cpu_alloc.borrow().get(&(cpu, vaddr)).unwrap_or_else(|| {
-                        println!("something wrong: {:x}", vaddr);
-                        println!("{:?}", this.machine.cpu_alloc);
-                        panic!();
-                    });
-                    this.write_scalar(
-                        Scalar::from_target_usize(actual_vaddr as u64, this),
-                        dest,
-                    )?;
+                this.write_scalar(
+                    Scalar::from_target_usize(vaddr as u64, this),
+                    dest,
+                )?;
+
+                // let cpu = this.machine.threads.active_cpu;
+                // if cpu == 0 {
+                //     this.write_scalar(
+                //         Scalar::from_target_usize(vaddr as u64, this),
+                //         dest,
+                //     )?;
+                // } else {
+                //     let actual_vaddr = *this.machine.cpu_alloc.borrow().get(&(cpu, vaddr)).unwrap_or_else(|| {
+                //         println!("something wrong: {:x}", vaddr);
+                //         println!("{:?}", this.machine.cpu_alloc);
+                //         panic!();
+                //     });
+                //     this.write_scalar(
+                //         Scalar::from_target_usize(actual_vaddr as u64, this),
+                //         dest,
+                //     )?;
 
 
-                    // else {
-                    //     let alloc_id = this.alloc_id_from_addr()
-                    //     let mut global_state = this.machine.alloc_addresses.borrow_mut();
+                //     // else {
+                //     //     let alloc_id = this.alloc_id_from_addr()
+                //     //     let mut global_state = this.machine.alloc_addresses.borrow_mut();
 
-                    //     let old_allocation = {
-                    //         let alloc_id = global_state.base_ad
-                    //     };
-                    //     let allocation = Allocation::uninit()
-                    // }
-                }                
+                //     //     let old_allocation = {
+                //     //         let alloc_id = global_state.base_ad
+                //     //     };
+                //     //     let allocation = Allocation::uninit()
+                //     // }
+                // }                
             }
 
             // "kern_miri_untyped_copy" => {
@@ -698,11 +717,16 @@ trait EvalContextExtPriv<'tcx>: crate::MiriInterpCxExt<'tcx> {
             "kern_miri_log" => {
                 let [info] = this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
                 let info = this.read_target_usize(info)? as usize;
-                println!("value: 0x{:x}", info);
+                
+                let t = paddr_to_mem(0x1310004) as *mut u32;
+                unsafe {
+                    println!("cpu {:?}, value: 0x{:x}, {:?}", this.machine.threads.active_cpu, *t, info);
+                }
             }
 
             "kern_miri_copy" => {
                 let [dst, src, len] = this.check_shim(abi, ExternAbi::Rust, link_name, args)?;
+
                 let mut dst = this.read_target_usize(dst)? as usize;
                 let mut src = this.read_target_usize(src)? as usize;
                 let mut len = this.read_target_usize(len)? as usize;
@@ -717,9 +741,8 @@ trait EvalContextExtPriv<'tcx>: crate::MiriInterpCxExt<'tcx> {
 
                     let real_dst = page_table.page_walk(dst).unwrap();
                     let real_src = page_table.page_walk(src).unwrap();
-
+                    
                     let real_len = core::cmp::min(len, remain);
-                    println!("look: {:x}, {:x}, {}", real_dst, real_src, real_len);
                     crate::physical_mem::physical_copy(real_dst, real_src, real_len);
 
                     len -= real_len;

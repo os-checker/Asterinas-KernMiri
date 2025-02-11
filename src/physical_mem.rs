@@ -14,6 +14,12 @@ pub const KERNEL_MEM: usize = 4 * 1024 * PAGE_SIZE;
 pub const BASE_BEGIN: u64 = 80 * PAGE_SIZE as u64;
 pub const STACK_BEGIN: u64 = 1024 * PAGE_SIZE as u64;
 
+
+
+pub const CPU_LOCAL_END: u64 = KERNEL_MEM as u64;
+pub const CPU_LOCAL_SIZE: u64 = 16 * PAGE_SIZE as u64;
+pub const CPU_LOCAL_BEGIN: u64 = KERNEL_MEM as u64 - CPU_LOCAL_SIZE;
+
 pub const MAX_USERSPACE_VADDR: usize = 0x0000_8000_0000_0000 - PAGE_SIZE;
 
 /// The pointer to the simulated physical memory.
@@ -54,9 +60,11 @@ pub fn create_allocation_at(paddr: usize, layout: Layout)
             Mutability::Mut);
 
         let offset = paddr % PAGE_SIZE;
-        if let Some(mask_allocation) = PHYS_INIT_MASK.get(&(paddr - offset)) {
-            let init_copy = mask_allocation.init_mask().prepare_copy((offset..offset + layout.size()).into());
-            allocation.init_mask_apply_copy(init_copy, (0..layout.size()).into(), 1);
+        if offset + layout.size() <= PAGE_SIZE {
+            if let Some(mask_allocation) = PHYS_INIT_MASK.get(&(paddr - offset)) {
+                let init_copy = mask_allocation.init_mask().prepare_copy((offset..offset + layout.size()).into());
+                allocation.init_mask_apply_copy(init_copy, (0..layout.size()).into(), 1);
+            }
         }
         allocation
     }
