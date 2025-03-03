@@ -17,11 +17,19 @@ pub trait BundleFile {
     fn size(&self) -> &u64;
 
     fn get_modified_time(&self) -> SystemTime {
-        self.path().metadata().unwrap().modified().unwrap()
+        let Ok(meta) = self.path().metadata() else {
+            return SystemTime::UNIX_EPOCH;
+        };
+
+        meta.modified().unwrap()
     }
 
     fn get_size(&self) -> u64 {
-        self.path().metadata().unwrap().size()
+        let Ok(meta) = self.path().metadata() else {
+            return 0;
+        };
+
+        meta.size()
     }
 
     fn validate(&self) -> bool {
