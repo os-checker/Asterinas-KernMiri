@@ -34,3 +34,25 @@ Check `./result/sqlite/` for:
 
 - `aster_output.txt` (Asterinas)
 - `linux_output.txt` (Linux)
+
+## Result Analysis
+
+To generate summarized results (CSV tables and PNG plots), follow these steps:
+
+1. **First**, execute the test script. By default, it will run 10 iterations of each benchmark:
+
+    ```shell
+        cd utils && ./multiple_run.sh
+    ```
+
+2. Generate Analysis Reports:
+Run the following scripts to process the raw data and produce outputs:
+
+    |Test|Command|Output Files|
+    |---|---|---|
+    |LMbench|cd utils/analysis && python lmbench.py|lmbench_results.csv|
+    |Nginx|cd utils/analysis && python nginx.py|nginx_results.csv, nginx_results_bar.png|
+    |SQLite|cd utils/analysis && python sqlite.py|sqlite_results.csv, sqlite_results_bar.png|
+    |Redis|cd utils/analysis && python redis.py|redis_results.csv, redis_results_bar.png|
+
+3. All results will be saved in `utils/analysis/`.
