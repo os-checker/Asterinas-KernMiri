@@ -35,7 +35,7 @@ eval/safety/tmp/
 test/benchmark/aster_output.txt
 test/benchmark/linux_output.txt
 test/benchmark/result_template.json
-eval/performance/utils/summary/*.png
+eval/performance/utils/analysis/*.png
 *.csv
 result_*.json
 aster_output.txt
