@@ -35,3 +35,10 @@ eval/safety/tmp/
 test/benchmark/aster_output.txt
 test/benchmark/linux_output.txt
 test/benchmark/result_template.json
+eval/performance/utils/summary/*.png
+*.csv
+result_*.json
+aster_output.txt
+linux_output.txt
+aster_output_no_iommu.txt
+Ratio-summary.json
