@@ -46,13 +46,10 @@ def process_csv_files(root_dir):
             )
             continue
 
-        # Use fstat to get modified timestamp, the Asterinas file should be newer
-        target_csv_files.sort(
-            key=lambda x: os.path.getmtime(os.path.join(result_dir, x)), reverse=True
-        )
-        no_iommu_csv_files.sort(
-            key=lambda x: os.path.getmtime(os.path.join(result_dir, x)), reverse=True
-        )
+        # Extract the pid from the file names, "all-{pid}.csv" and "without-iommu-all-{pid}.csv", then sort by pid
+        # The smaller pid is Asterinas, the larger pid is Linux
+        target_csv_files.sort(key=lambda x: int(x.split("-")[1].split(".")[0]))
+        no_iommu_csv_files.sort(key=lambda x: int(x.split("-")[3].split(".")[0]))
 
         # Open files, and collect data to results
         # The first file is Asterinas, the second is Linux
