@@ -2,7 +2,7 @@
 
 This repository provides the artifacts and instructions to conduct artifact evaluation for the following paper.
 
-> Yuke Peng, Hongliang Tian, Zhang Junyang, Ruihan Li, Chengjun Chen, Jianfeng Jiang, Jinyi Xian, Yingwei Luo, Xiaolin Wang, Chenren Xu, Diyu Zhou, Shoumeng Yan, Yinqian Zhang. _Asterinas: A Linux ABI-Compatible, Rust-Based Framekernel OS with a Small and Sound TCB_. USENIX ATC'25.
+> Yuke Peng, Hongliang Tian, Zhang Junyang, Ruihan Li, Chengjun Chen, Jianfeng Jiang, Jinyi Xian, Xiaolin Wang, Chenren Xu, Diyu Zhou, Yingwei Luo, Shoumeng Yan, Yinqian Zhang. _Asterinas: A Linux ABI-Compatible, Rust-Based Framekernel OS with a Small and Sound TCB_. USENIX ATC'25.
 
 The main artifacts described by the paper can be found:
 * OSTD: the [ostd/](ostd/) directory;
