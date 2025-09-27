@@ -2,6 +2,7 @@
 # because the commit is too old and corresponding artifact is absent.
 # Therefore we must set up miri toolchain from local source.
 git apply reproduce/miri-script.patch
+git apply reproduce/2-miri-script.patch
 
 # Clone rust repo at the commit as specified by rust-version file
 git submodule update --init rust
@@ -28,3 +29,4 @@ apt install -y cmake ninja-build libssl-dev build-essential pkg-config
 # Add local rustc toolchain named miri which miri requires
 rustup toolchain link miri build/aarch64-unknown-linux-gnu/stage2
 
+cp build/x86_64-unknown-linux-gnu/stage2-tools-bin/cargo build/x86_64-unknown-linux-gnu/stage2/bin/

@@ -1,0 +1,28 @@
+diff --git a/miri b/miri
+index 5d07ad9e2..f470b23e0 100755
+--- a/miri
++++ b/miri
+@@ -7,7 +7,7 @@ if ! [ -t 1 ] && [ -z "$CI" ]; then
+   MESSAGE_FORMAT="--message-format=json"
+ fi
+ # We need a nightly toolchain, for the `profile-rustflags` cargo feature.
+-cargo +nightly build $CARGO_EXTRA_FLAGS --manifest-path "$(dirname "$0")"/miri-script/Cargo.toml \
++cargo +miri build $CARGO_EXTRA_FLAGS --manifest-path "$(dirname "$0")"/miri-script/Cargo.toml \
+   -q --target-dir "$MIRI_SCRIPT_TARGET_DIR" $MESSAGE_FORMAT || \
+   ( echo "Failed to build miri-script. Is the 'nightly' toolchain installed?"; exit 1 )
+ # Instead of doing just `cargo run --manifest-path .. $@`, we invoke miri-script binary directly. Invoking `cargo run` goes through
+diff --git a/miri-script/src/commands.rs b/miri-script/src/commands.rs
+index 2f50c87c5..adbbcaea6 100644
+--- a/miri-script/src/commands.rs
++++ b/miri-script/src/commands.rs
+@@ -188,8 +188,8 @@ impl Command {
+ 
+     fn toolchain(flags: Vec<String>) -> Result<()> {
+         // Make sure rustup-toolchain-install-master is installed.
+-        which::which("rustup-toolchain-install-master")
+-            .context("Please install rustup-toolchain-install-master by running 'cargo install rustup-toolchain-install-master'")?;
++        // which::which("rustup-toolchain-install-master")
++        //    .context("Please install rustup-toolchain-install-master by running 'cargo install rustup-toolchain-install-master'")?;
+         let sh = Shell::new()?;
+         sh.change_dir(miri_dir()?);
+         let new_commit = sh.read_file("rust-version")?.trim().to_owned();

@@ -188,8 +188,8 @@ impl Command {
 
     fn toolchain(flags: Vec<String>) -> Result<()> {
         // Make sure rustup-toolchain-install-master is installed.
-        which::which("rustup-toolchain-install-master")
-            .context("Please install rustup-toolchain-install-master by running 'cargo install rustup-toolchain-install-master'")?;
+        // which::which("rustup-toolchain-install-master")
+        //    .context("Please install rustup-toolchain-install-master by running 'cargo install rustup-toolchain-install-master'")?;
         let sh = Shell::new()?;
         sh.change_dir(miri_dir()?);
         let new_commit = sh.read_file("rust-version")?.trim().to_owned();

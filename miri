@@ -7,7 +7,7 @@ if ! [ -t 1 ] && [ -z "$CI" ]; then
   MESSAGE_FORMAT="--message-format=json"
 fi
 # We need a nightly toolchain, for the `profile-rustflags` cargo feature.
-cargo +nightly build $CARGO_EXTRA_FLAGS --manifest-path "$(dirname "$0")"/miri-script/Cargo.toml \
+cargo +miri build $CARGO_EXTRA_FLAGS --manifest-path "$(dirname "$0")"/miri-script/Cargo.toml \
   -q --target-dir "$MIRI_SCRIPT_TARGET_DIR" $MESSAGE_FORMAT || \
   ( echo "Failed to build miri-script. Is the 'nightly' toolchain installed?"; exit 1 )
 # Instead of doing just `cargo run --manifest-path .. $@`, we invoke miri-script binary directly. Invoking `cargo run` goes through
