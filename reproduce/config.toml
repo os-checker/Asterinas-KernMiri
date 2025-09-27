@@ -1,0 +1,32 @@
+# Includes one of the default files in src/bootstrap/defaults
+profile = "tools"
+change-id = 132494
+
+[build]
+# Instead of downloading the src/stage0 version of Cargo specified, use
+# this Cargo binary instead to build all Rust code
+# If you set this, you likely want to set `rustc` as well.
+cargo = "/root/.rustup/toolchains/nightly-2024-11-03-x86_64-unknown-linux-gnu/bin/cargo"
+
+# Instead of downloading the src/stage0 version of the compiler
+# specified, use this rustc binary instead as the stage0 snapshot compiler.
+# If you set this, you likely want to set `cargo` as well.
+rustc = "/root/.rustup/toolchains/nightly-2024-11-03-x86_64-unknown-linux-gnu/bin/rustc"
+
+# Instead of downloading the src/stage0 version of rustfmt specified,
+# use this rustfmt binary instead as the stage0 snapshot rustfmt.
+rustfmt = "/root/.rustup/toolchains/nightly-2024-11-03-x86_64-unknown-linux-gnu/bin/rustfmt"
+
+# Instead of downloading the src/stage0 version of cargo-clippy specified,
+# use this cargo-clippy binary instead as the stage0 snapshot cargo-clippy.
+#
+# Note that this option should be used with the same toolchain as the `rustc` option above.
+# Otherwise, clippy is likely to fail due to a toolchain conflict.
+cargo-clippy = "/root/.rustup/toolchains/nightly-2024-11-03-x86_64-unknown-linux-gnu/bin/cargo-clippy"
+
+[rust]
+channel = "nightly" # full toolchain, otherwise dev toolchain won't generate commit-hash or other stuff
+download-rustc = false
+
+[llvm]
+download-ci-llvm = false
