@@ -16,7 +16,7 @@ cp reproduce/config.toml rust/
 cd rust
 
 # LLVM requires
-apt install -y cmake ninja-build build-essential
+apt install -y cmake ninja-build libssl-dev build-essential pkg-config
 
 # Prepare: don't override config.toml because it contains local
 ./x setup
