@@ -1,0 +1,13 @@
+diff --git a/miri-script/src/commands.rs b/miri-script/src/commands.rs
+index 21029d0b5..2f50c87c5 100644
+--- a/miri-script/src/commands.rs
++++ b/miri-script/src/commands.rs
+@@ -216,7 +216,7 @@ impl Command {
+         // Install and setup new toolchain.
+         cmd!(sh, "rustup toolchain uninstall miri").run()?;
+ 
+-        cmd!(sh, "rustup-toolchain-install-master -n miri -c cargo -c rust-src -c rustc-dev -c llvm-tools -c rustfmt -c clippy {flags...} -- {new_commit}").run()?;
++        // cmd!(sh, "rustup-toolchain-install-master -n miri -c cargo -c rust-src -c rustc-dev -c llvm-tools -c rustfmt -c clippy {flags...} -- {new_commit}").run()?;
+         cmd!(sh, "rustup override set miri").run()?;
+         // Cleanup.
+         cmd!(sh, "cargo clean").run()?;
