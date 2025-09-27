@@ -1,3 +1,8 @@
+# Don't download toolchain artifact through rustup-toolchain-install-master,
+# because the commit is too old and corresponding artifact is absent.
+# Therefore we must set up miri toolchain from local source.
+git apply reproduce/miri-script.patch
+
 # Clone rust repo at the commit as specified by rust-version file
 git submodule update --init rust
 
@@ -17,4 +22,9 @@ apt install -y cmake ninja-build build-essential
 ./x setup
 
 # Build stage2 artifacts: LLVM, rustc, std, and tools
+# LLVM may take a long time to build, like 1 hour on 4-cores server.
 ./x build --stage 2 rustfmt clippy cargo
+
+# Add local rustc toolchain named miri which miri requires
+rustup toolchain link miri build/aarch64-unknown-linux-gnu/stage2
+
