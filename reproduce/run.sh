@@ -29,4 +29,12 @@ apt install -y cmake ninja-build libssl-dev build-essential pkg-config
 # Add local rustc toolchain named miri which miri requires
 rustup toolchain link miri build/aarch64-unknown-linux-gnu/stage2
 
+# Copy cargo because it's not included
 cp build/x86_64-unknown-linux-gnu/stage2-tools-bin/cargo build/x86_64-unknown-linux-gnu/stage2/bin/
+
+cd ..
+
+./miri toolchain
+./miri build
+./miri run tests/fail/rc_as_ptr.rs
+./miri install
