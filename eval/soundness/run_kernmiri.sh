@@ -13,8 +13,8 @@ set -eou pipefail
 #    rm -rf $HOME/miri_asterinas
 #fi
 
-git clone --single-branch -b kern_miri https://github.com/asterinas/atc25-artifact-evaluation.git ~/miri
-git clone --single-branch -b miri_asterinas https://github.com/asterinas/atc25-artifact-evaluation.git ~/miri_asterinas
+git clone --single-branch -b kern_miri https://github.com/asterinas/atc25-artifact-evaluation.git ~/miri || true
+git clone --single-branch -b miri_asterinas https://github.com/asterinas/atc25-artifact-evaluation.git ~/miri_asterinas || true
 
 pushd ~/miri
 
