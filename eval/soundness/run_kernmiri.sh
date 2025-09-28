@@ -13,8 +13,13 @@ set -eou pipefail
 #    rm -rf $HOME/miri_asterinas
 #fi
 
-git clone --single-branch -b kern_miri https://github.com/asterinas/atc25-artifact-evaluation.git ~/miri || true
-git clone --single-branch -b miri_asterinas https://github.com/asterinas/atc25-artifact-evaluation.git ~/miri_asterinas || true
+if [[ ! -d "$HOME/miri" ]]; then
+  git clone --single-branch -b kern_miri https://github.com/asterinas/atc25-artifact-evaluation.git ~/miri
+fi
+
+if [[ ! -d "$HOME/miri_asterinas" ]]; then
+  git clone --single-branch -b miri_asterinas https://github.com/asterinas/atc25-artifact-evaluation.git ~/miri_asterinas
+fi
 
 pushd ~/miri
 
@@ -30,7 +35,7 @@ popd
 
 pushd ~/miri_asterinas
 
-git reset --hard 59dca48f8b2d9d3e5edd8ef89443417b57749682
+# git reset --hard 59dca48f8b2d9d3e5edd8ef89443417b57749682
 rustup override set nightly-2024-11-04
 make install_osdk
 
