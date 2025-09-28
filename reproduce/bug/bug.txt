@@ -1,4 +1,4 @@
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.06s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.08s
      Running `/root/Asterinas-KernMiri/rust/build/x86_64-unknown-linux-gnu/stage2/bin/cargo-miri runner target/miri/x86_64-unknown-linux-gnu/debug/bug`
 warning: the feature `generic_const_exprs` is incomplete and may not be safe to use and/or cause compiler crashes
  --> src/main.rs:2:12
@@ -361,21 +361,16 @@ note: inside `miri_start`
 12  |     ostd::arch::boot::miri_boot();
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-error: Undefined Behavior: trying to retag from <wildcard> for Unique permission at alloc20962[0x0], but no exposed tags have suitable permission in the borrow stack for this location
-   --> /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/boot_pt.rs:267:31
+warning: integer-to-pointer cast
+   --> /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/boot_pt.rs:149:35
     |
-267 |             let pte = unsafe {&mut *((pt_vaddr as usize + pte_index * 8) as *mut E)};
-    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    |                               |
-    |                               trying to retag from <wildcard> for Unique permission at alloc20962[0x0], but no exposed tags have suitable permission in the borrow stack for this location
-    |                               this error occurs as part of retag at alloc20962[0x0..0x8]
+149 |             let pte_ptr = unsafe {(paddr_to_vaddr(pt * C::BASE_PAGE_SIZE) + index * 8) as *mut E};
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ integer-to-pointer cast
     |
-    = help: this indicates a potential bug in the program: it performed an invalid operation, but the Stacked Borrows rules it violated are still experimental
-    = help: see https://github.com/rust-lang/unsafe-code-guidelines/blob/master/wip/stacked-borrows.md for further information
     = note: BACKTRACE:
-    = note: inside `ostd::mm::page_table::boot_pt::dfs_walk_on_leave::<ostd::arch::mm::PageTableEntry, ostd::arch::mm::PagingConsts, {closure@ostd::mm::page_table::boot_pt::BootPageTable::from_current_pt::{closure#0}}>` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/boot_pt.rs:267:31: 267:84
-    = note: inside `ostd::mm::page_table::boot_pt::BootPageTable::from_current_pt` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/boot_pt.rs:113:9: 121:11
-    = note: inside `ostd::mm::page_table::boot_pt::with_borrow::<{closure@ostd::mm::frame::meta::init::{closure#1}}, ()>` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/boot_pt.rs:48:34: 48:66
+    = note: inside `ostd::mm::page_table::boot_pt::BootPageTable::map_base_page` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/boot_pt.rs:149:35: 149:97
+    = note: inside closure at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/frame/meta.rs:279:22: 279:81
+    = note: inside `ostd::mm::page_table::boot_pt::with_borrow::<{closure@ostd::mm::frame::meta::init::{closure#1}}, ()>` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/boot_pt.rs:51:13: 51:41
     = note: inside `ostd::mm::frame::meta::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/frame/meta.rs:269:5: 281:7
     = note: inside `ostd::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/lib.rs:90:40: 90:60
     = note: inside `ostd::boot::call_ostd_main` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:125:14: 125:27
@@ -386,5 +381,423 @@ note: inside `miri_start`
 12  |     ostd::arch::boot::miri_boot();
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-error: aborting due to 1 previous error; 12 warnings emitted
+warning: integer-to-pointer cast
+   --> /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/boot_pt.rs:236:21
+    |
+236 |         let vaddr = paddr_to_vaddr(frame * PAGE_SIZE) as *mut u8;
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = note: BACKTRACE:
+    = note: inside `ostd::mm::page_table::boot_pt::BootPageTable::alloc_child` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/boot_pt.rs:236:21: 236:65
+    = note: inside `ostd::mm::page_table::boot_pt::BootPageTable::map_base_page` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/boot_pt.rs:152:27: 152:45
+    = note: inside closure at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/frame/meta.rs:279:22: 279:81
+    = note: inside `ostd::mm::page_table::boot_pt::with_borrow::<{closure@ostd::mm::frame::meta::init::{closure#1}}, ()>` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/boot_pt.rs:51:13: 51:41
+    = note: inside `ostd::mm::frame::meta::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/frame/meta.rs:269:5: 281:7
+    = note: inside `ostd::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/lib.rs:90:40: 90:60
+    = note: inside `ostd::boot::call_ostd_main` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:125:14: 125:27
+    = note: inside `ostd::arch::boot::miri_boot` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/boot/mod.rs:69:5: 69:34
+note: inside `miri_start`
+   --> src/main.rs:12:5
+    |
+12  |     ostd::arch::boot::miri_boot();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: integer-to-pointer cast
+   --> /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/boot_pt.rs:164:32
+    |
+164 |         let pte_ptr = unsafe { (paddr_to_vaddr(pt * C::BASE_PAGE_SIZE) + index * 8) as *mut E };
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = note: BACKTRACE:
+    = note: inside `ostd::mm::page_table::boot_pt::BootPageTable::map_base_page` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/boot_pt.rs:164:32: 164:94
+    = note: inside closure at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/frame/meta.rs:279:22: 279:81
+    = note: inside `ostd::mm::page_table::boot_pt::with_borrow::<{closure@ostd::mm::frame::meta::init::{closure#1}}, ()>` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/boot_pt.rs:51:13: 51:41
+    = note: inside `ostd::mm::frame::meta::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/frame/meta.rs:269:5: 281:7
+    = note: inside `ostd::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/lib.rs:90:40: 90:60
+    = note: inside `ostd::boot::call_ostd_main` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:125:14: 125:27
+    = note: inside `ostd::arch::boot::miri_boot` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/boot/mod.rs:69:5: 69:34
+note: inside `miri_start`
+   --> src/main.rs:12:5
+    |
+12  |     ostd::arch::boot::miri_boot();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: integer-to-pointer cast
+   --> /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/frame/meta.rs:287:17
+    |
+287 |                 address as *mut u8,
+    |                 ^^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = note: BACKTRACE:
+    = note: inside `ostd::mm::frame::meta::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/frame/meta.rs:287:17: 287:35
+    = note: inside `ostd::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/lib.rs:90:40: 90:60
+    = note: inside `ostd::boot::call_ostd_main` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:125:14: 125:27
+    = note: inside `ostd::arch::boot::miri_boot` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/boot/mod.rs:69:5: 69:34
+note: inside `miri_start`
+   --> src/main.rs:12:5
+    |
+12  |     ostd::arch::boot::miri_boot();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: integer-to-pointer cast
+   --> /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/frame/mod.rs:101:19
+    |
+101 |         let ptr = vaddr as *const MetaSlot;
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = note: BACKTRACE:
+    = note: inside `ostd::mm::Frame::<ostd::mm::frame::meta::MetaPageMeta>::from_unused` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/frame/mod.rs:101:19: 101:43
+    = note: inside `ostd::mm::Segment::<ostd::mm::frame::meta::MetaPageMeta>::from_unused::<{closure@ostd::mm::frame::meta::init::{closure#2}}>` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/frame/segment.rs:80:39: 80:89
+    = note: inside `ostd::mm::frame::meta::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/frame/meta.rs:295:5: 297:7
+    = note: inside `ostd::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/lib.rs:90:40: 90:60
+    = note: inside `ostd::boot::call_ostd_main` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:125:14: 125:27
+    = note: inside `ostd::arch::boot::miri_boot` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/boot/mod.rs:69:5: 69:34
+note: inside `miri_start`
+   --> src/main.rs:12:5
+    |
+12  |     ostd::arch::boot::miri_boot();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: integer-to-pointer cast
+  --> /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/frame/allocator.rs:64:24
+   |
+64 |             let addr = paddr_to_vaddr(frame.start_paddr()) as *mut u8;
+   |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+   |
+   = note: BACKTRACE:
+   = note: inside `ostd::mm::FrameAllocOptions::alloc_frame_with::<ostd::mm::page_table::node::PageTablePageMeta>` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/frame/allocator.rs:64:24: 64:70
+   = note: inside `ostd::mm::page_table::node::PageTableNode::alloc` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/node/mod.rs:264:20: 266:36
+   = note: inside `ostd::mm::page_table::PageTable::<ostd::mm::page_table::KernelMode>::empty` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/mod.rs:204:19: 204:95
+   = note: inside `ostd::mm::kspace::init_kernel_page_table` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/kspace/mod.rs:145:15: 145:47
+   = note: inside `ostd::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/lib.rs:90:5: 90:61
+   = note: inside `ostd::boot::call_ostd_main` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:125:14: 125:27
+   = note: inside `ostd::arch::boot::miri_boot` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/boot/mod.rs:69:5: 69:34
+note: inside `miri_start`
+  --> src/main.rs:12:5
+   |
+12 |     ostd::arch::boot::miri_boot();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: integer-to-pointer cast
+   --> /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/frame/mod.rs:351:27
+    |
+351 |     let slot = unsafe { &*(vaddr as *const MetaSlot) };
+    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = note: BACKTRACE:
+    = note: inside `ostd::mm::frame::inc_frame_ref_count` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/frame/mod.rs:351:27: 351:53
+    = note: inside `ostd::mm::page_table::node::RawPageTableNode::<ostd::arch::mm::PageTableEntry, ostd::arch::mm::PagingConsts>::inc_ref_count` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/node/mod.rs:169:13: 169:46
+    = note: inside `ostd::mm::page_table::node::RawPageTableNode::<ostd::arch::mm::PageTableEntry, ostd::arch::mm::PagingConsts>::clone_shallow` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/node/mod.rs:101:9: 101:29
+    = note: inside `ostd::mm::page_table::PageTable::<ostd::mm::page_table::KernelMode>::make_shared_tables` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/mod.rs:158:29: 158:54
+    = note: inside `ostd::mm::kspace::init_kernel_page_table` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/kspace/mod.rs:150:9: 150:65
+    = note: inside `ostd::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/lib.rs:90:5: 90:61
+    = note: inside `ostd::boot::call_ostd_main` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:125:14: 125:27
+    = note: inside `ostd::arch::boot::miri_boot` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/boot/mod.rs:69:5: 69:34
+note: inside `miri_start`
+   --> src/main.rs:12:5
+    |
+12  |     ostd::arch::boot::miri_boot();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: integer-to-pointer cast
+   --> /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/frame/mod.rs:237:19
+    |
+237 |         let ptr = vaddr as *const MetaSlot;
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = note: BACKTRACE:
+    = note: inside `ostd::mm::Frame::<ostd::mm::page_table::node::PageTablePageMeta>::from_raw` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/frame/mod.rs:237:19: 237:43
+    = note: inside `ostd::mm::page_table::node::<impl core::convert::From<ostd::mm::page_table::node::RawPageTableNode<ostd::arch::mm::PageTableEntry, ostd::arch::mm::PagingConsts>> for ostd::mm::Frame<ostd::mm::page_table::node::PageTablePageMeta>>::from` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/node/mod.rs:199:18: 199:73
+    = note: inside `ostd::mm::page_table::node::RawPageTableNode::<ostd::arch::mm::PageTableEntry, ostd::arch::mm::PagingConsts>::lock` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/node/mod.rs:82:52: 82:63
+    = note: inside `ostd::mm::page_table::PageTable::<ostd::mm::page_table::KernelMode>::make_shared_tables` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/mod.rs:158:29: 158:61
+    = note: inside `ostd::mm::kspace::init_kernel_page_table` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/kspace/mod.rs:150:9: 150:65
+    = note: inside `ostd::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/lib.rs:90:5: 90:61
+    = note: inside `ostd::boot::call_ostd_main` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:125:14: 125:27
+    = note: inside `ostd::arch::boot::miri_boot` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/boot/mod.rs:69:5: 69:34
+note: inside `miri_start`
+   --> src/main.rs:12:5
+    |
+12  |     ostd::arch::boot::miri_boot();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: integer-to-pointer cast
+   --> /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/node/mod.rs:315:19
+    |
+315 |         let ptr = paddr_to_vaddr(self.page.start_paddr() + idx * 8) as *const E;
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = note: BACKTRACE:
+    = note: inside `ostd::mm::page_table::node::PageTableNode::read_pte` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/node/mod.rs:315:19: 315:80
+    = note: inside `ostd::mm::page_table::node::entry::Entry::<'_, ostd::arch::mm::PageTableEntry, ostd::arch::mm::PagingConsts>::new_at` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/node/entry.rs:152:28: 152:46
+    = note: inside `ostd::mm::page_table::node::PageTableNode::entry` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/node/mod.rs:244:18: 244:42
+    = note: inside `ostd::mm::page_table::PageTable::<ostd::mm::page_table::KernelMode>::make_shared_tables` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/mod.rs:160:30: 160:48
+    = note: inside `ostd::mm::kspace::init_kernel_page_table` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/kspace/mod.rs:150:9: 150:65
+    = note: inside `ostd::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/lib.rs:90:5: 90:61
+    = note: inside `ostd::boot::call_ostd_main` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:125:14: 125:27
+    = note: inside `ostd::arch::boot::miri_boot` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/boot/mod.rs:69:5: 69:34
+note: inside `miri_start`
+   --> src/main.rs:12:5
+    |
+12  |     ostd::arch::boot::miri_boot();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: integer-to-pointer cast
+   --> /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/node/mod.rs:335:19
+    |
+335 |         let ptr = paddr_to_vaddr(self.page.start_paddr() + idx * 8) as *mut E;
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = note: BACKTRACE:
+    = note: inside `ostd::mm::page_table::node::PageTableNode::write_pte` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/node/mod.rs:335:19: 335:78
+    = note: inside `ostd::mm::page_table::node::entry::Entry::<'_, ostd::arch::mm::PageTableEntry, ostd::arch::mm::PagingConsts>::replace` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/node/entry.rs:106:18: 106:69
+    = note: inside `ostd::mm::page_table::PageTable::<ostd::mm::page_table::KernelMode>::make_shared_tables` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/mod.rs:171:25: 171:78
+    = note: inside `ostd::mm::kspace::init_kernel_page_table` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/kspace/mod.rs:150:9: 150:65
+    = note: inside `ostd::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/lib.rs:90:5: 90:61
+    = note: inside `ostd::boot::call_ostd_main` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:125:14: 125:27
+    = note: inside `ostd::arch::boot::miri_boot` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/boot/mod.rs:69:5: 69:34
+note: inside `miri_start`
+   --> src/main.rs:12:5
+    |
+12  |     ostd::arch::boot::miri_boot();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: integer-to-pointer cast
+   --> /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/cursor.rs:186:30
+    |
+186 |             let cur_pt_ptr = paddr_to_vaddr(cur_pt_addr) as *mut E;
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = note: BACKTRACE:
+    = note: inside `ostd::mm::page_table::cursor::Cursor::<'_, ostd::mm::page_table::KernelMode, ostd::arch::mm::PageTableEntry, ostd::arch::mm::PagingConsts>::new` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/cursor.rs:186:30: 186:67
+    = note: inside `ostd::mm::page_table::cursor::CursorMut::<'_, ostd::mm::page_table::KernelMode, ostd::arch::mm::PageTableEntry, ostd::arch::mm::PagingConsts>::new` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/cursor.rs:381:9: 381:28
+    = note: inside `ostd::mm::page_table::PageTable::<ostd::mm::page_table::KernelMode>::cursor_mut` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/mod.rs:251:9: 251:33
+    = note: inside `ostd::mm::page_table::PageTable::<ostd::mm::page_table::KernelMode>::map` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/mod.rs:228:9: 228:31
+    = note: inside `ostd::mm::kspace::init_kernel_page_table` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/kspace/mod.rs:164:13: 164:38
+    = note: inside `ostd::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/lib.rs:90:5: 90:61
+    = note: inside `ostd::boot::call_ostd_main` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:125:14: 125:27
+    = note: inside `ostd::arch::boot::miri_boot` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/boot/mod.rs:69:5: 69:34
+note: inside `miri_start`
+   --> src/main.rs:12:5
+    |
+12  |     ostd::arch::boot::miri_boot();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: integer-to-pointer cast
+   --> /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/cursor.rs:191:36
+    |
+191 |             let cur_pte = unsafe { (address as *mut E).read() };
+    |                                    ^^^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = note: BACKTRACE:
+    = note: inside `ostd::mm::page_table::cursor::Cursor::<'_, ostd::mm::page_table::KernelMode, ostd::arch::mm::PageTableEntry, ostd::arch::mm::PagingConsts>::new` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/cursor.rs:191:36: 191:55
+    = note: inside `ostd::mm::page_table::cursor::CursorMut::<'_, ostd::mm::page_table::KernelMode, ostd::arch::mm::PageTableEntry, ostd::arch::mm::PagingConsts>::new` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/cursor.rs:381:9: 381:28
+    = note: inside `ostd::mm::page_table::PageTable::<ostd::mm::page_table::KernelMode>::cursor_mut` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/mod.rs:251:9: 251:33
+    = note: inside `ostd::mm::page_table::PageTable::<ostd::mm::page_table::KernelMode>::map` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/page_table/mod.rs:228:9: 228:31
+    = note: inside `ostd::mm::kspace::init_kernel_page_table` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/kspace/mod.rs:164:13: 164:38
+    = note: inside `ostd::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/lib.rs:90:5: 90:61
+    = note: inside `ostd::boot::call_ostd_main` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:125:14: 125:27
+    = note: inside `ostd::arch::boot::miri_boot` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/boot/mod.rs:69:5: 69:34
+note: inside `miri_start`
+   --> src/main.rs:12:5
+    |
+12  |     ostd::arch::boot::miri_boot();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: integer-to-pointer cast
+  --> /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/heap_allocator/slab_allocator/slab.rs:90:19
+   |
+90 |         let ptr = ptr as *mut FreeBlock;
+   |                   ^^^^^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+   |
+   = note: BACKTRACE:
+   = note: inside `ostd::mm::heap_allocator::slab_allocator::slab::Slab::<256>::deallocate` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/heap_allocator/slab_allocator/slab.rs:90:19: 90:40
+   = note: inside `ostd::mm::heap_allocator::slab_allocator::Heap::deallocate` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/heap_allocator/slab_allocator/mod.rs:212:44: 212:79
+   = note: inside `<ostd::mm::heap_allocator::LockedHeapWithRescue as core::alloc::GlobalAlloc>::dealloc` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/heap_allocator/mod.rs:157:9: 162:37
+   = note: inside `<ostd::mm::heap_allocator::LockedHeapWithRescue as core::alloc::GlobalAlloc>::realloc` at /root/Asterinas-KernMiri/rust/library/core/src/alloc/global.rs:272:17: 272:42
+   = note: inside `ostd::mm::heap_allocator::_::__rust_realloc` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/heap_allocator/mod.rs:25:24: 25:44
+   = note: inside `alloc::raw_vec::finish_grow::<alloc::alloc::Global>` at /root/Asterinas-KernMiri/rust/library/alloc/src/raw_vec.rs:776:13: 776:52
+   = note: inside `alloc::raw_vec::RawVecInner::grow_amortized` at /root/Asterinas-KernMiri/rust/library/alloc/src/raw_vec.rs:661:19: 661:93
+   = note: inside `ostd::arch::miri::irq::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/irq.rs:24:9: 27:11
+   = note: inside `ostd::arch::miri::init_on_bsp` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/mod.rs:32:5: 32:16
+   = note: inside `ostd::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/lib.rs:93:5: 93:24
+   = note: inside `ostd::boot::call_ostd_main` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:125:14: 125:27
+   = note: inside `ostd::arch::boot::miri_boot` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/boot/mod.rs:69:5: 69:34
+note: inside `miri_start`
+  --> src/main.rs:12:5
+   |
+12 |     ostd::arch::boot::miri_boot();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: integer-to-pointer cast
+   --> /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/heap_allocator/slab_allocator/mod.rs:219:39
+    |
+219 |                 .dealloc(NonNull::new(ptr as *mut u8).unwrap(), layout),
+    |                                       ^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = note: BACKTRACE:
+    = note: inside `ostd::mm::heap_allocator::slab_allocator::Heap::deallocate` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/heap_allocator/slab_allocator/mod.rs:219:39: 219:53
+    = note: inside `<ostd::mm::heap_allocator::LockedHeapWithRescue as core::alloc::GlobalAlloc>::dealloc` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/heap_allocator/mod.rs:157:9: 162:37
+    = note: inside `<ostd::mm::heap_allocator::LockedHeapWithRescue as core::alloc::GlobalAlloc>::realloc` at /root/Asterinas-KernMiri/rust/library/core/src/alloc/global.rs:272:17: 272:42
+    = note: inside `ostd::mm::heap_allocator::_::__rust_realloc` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/heap_allocator/mod.rs:25:24: 25:44
+    = note: inside `alloc::raw_vec::finish_grow::<alloc::alloc::Global>` at /root/Asterinas-KernMiri/rust/library/alloc/src/raw_vec.rs:776:13: 776:52
+    = note: inside `alloc::raw_vec::RawVecInner::grow_amortized` at /root/Asterinas-KernMiri/rust/library/alloc/src/raw_vec.rs:661:19: 661:93
+    = note: inside `ostd::arch::miri::irq::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/irq.rs:24:9: 27:11
+    = note: inside `ostd::arch::miri::init_on_bsp` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/mod.rs:32:5: 32:16
+    = note: inside `ostd::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/lib.rs:93:5: 93:24
+    = note: inside `ostd::boot::call_ostd_main` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:125:14: 125:27
+    = note: inside `ostd::arch::boot::miri_boot` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/boot/mod.rs:69:5: 69:34
+note: inside `miri_start`
+   --> src/main.rs:12:5
+    |
+12  |     ostd::arch::boot::miri_boot();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: integer-to-pointer cast
+   --> /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/buddy_system_allocator-0.10.0/src/linked_list.rs:137:34
+    |
+137 |             self.curr = unsafe { *self.curr as *mut usize };
+    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = note: BACKTRACE:
+    = note: inside `<buddy_system_allocator::linked_list::IterMut<'_> as core::iter::Iterator>::next` at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/buddy_system_allocator-0.10.0/src/linked_list.rs:137:34: 137:58
+    = note: inside `buddy_system_allocator::Heap::<32>::dealloc` at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/buddy_system_allocator-0.10.0/src/lib.rs:166:30: 166:70
+    = note: inside `ostd::mm::heap_allocator::slab_allocator::Heap::deallocate` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/heap_allocator/slab_allocator/mod.rs:217:46: 219:72
+    = note: inside `<ostd::mm::heap_allocator::LockedHeapWithRescue as core::alloc::GlobalAlloc>::dealloc` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/heap_allocator/mod.rs:157:9: 162:37
+    = note: inside `<ostd::mm::heap_allocator::LockedHeapWithRescue as core::alloc::GlobalAlloc>::realloc` at /root/Asterinas-KernMiri/rust/library/core/src/alloc/global.rs:272:17: 272:42
+    = note: inside `ostd::mm::heap_allocator::_::__rust_realloc` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/heap_allocator/mod.rs:25:24: 25:44
+    = note: inside `alloc::raw_vec::finish_grow::<alloc::alloc::Global>` at /root/Asterinas-KernMiri/rust/library/alloc/src/raw_vec.rs:776:13: 776:52
+    = note: inside `alloc::raw_vec::RawVecInner::grow_amortized` at /root/Asterinas-KernMiri/rust/library/alloc/src/raw_vec.rs:661:19: 661:93
+    = note: inside `ostd::arch::miri::irq::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/irq.rs:24:9: 27:11
+    = note: inside `ostd::arch::miri::init_on_bsp` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/mod.rs:32:5: 32:16
+    = note: inside `ostd::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/lib.rs:93:5: 93:24
+    = note: inside `ostd::boot::call_ostd_main` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:125:14: 125:27
+    = note: inside `ostd::arch::boot::miri_boot` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/boot/mod.rs:69:5: 69:34
+note: inside `miri_start`
+   --> src/main.rs:12:5
+    |
+12  |     ostd::arch::boot::miri_boot();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: integer-to-pointer cast
+   --> /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/buddy_system_allocator-0.10.0/src/lib.rs:179:56
+    |
+179 |                     self.free_list[current_class].push(current_ptr as *mut usize);
+    |                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = note: BACKTRACE:
+    = note: inside `buddy_system_allocator::Heap::<32>::dealloc` at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/buddy_system_allocator-0.10.0/src/lib.rs:179:56: 179:81
+    = note: inside `ostd::mm::heap_allocator::slab_allocator::Heap::deallocate` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/heap_allocator/slab_allocator/mod.rs:217:46: 219:72
+    = note: inside `<ostd::mm::heap_allocator::LockedHeapWithRescue as core::alloc::GlobalAlloc>::dealloc` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/heap_allocator/mod.rs:157:9: 162:37
+    = note: inside `<ostd::mm::heap_allocator::LockedHeapWithRescue as core::alloc::GlobalAlloc>::realloc` at /root/Asterinas-KernMiri/rust/library/core/src/alloc/global.rs:272:17: 272:42
+    = note: inside `ostd::mm::heap_allocator::_::__rust_realloc` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/mm/heap_allocator/mod.rs:25:24: 25:44
+    = note: inside `alloc::raw_vec::finish_grow::<alloc::alloc::Global>` at /root/Asterinas-KernMiri/rust/library/alloc/src/raw_vec.rs:776:13: 776:52
+    = note: inside `alloc::raw_vec::RawVecInner::grow_amortized` at /root/Asterinas-KernMiri/rust/library/alloc/src/raw_vec.rs:661:19: 661:93
+    = note: inside `ostd::arch::miri::irq::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/irq.rs:24:9: 27:11
+    = note: inside `ostd::arch::miri::init_on_bsp` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/mod.rs:32:5: 32:16
+    = note: inside `ostd::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/lib.rs:93:5: 93:24
+    = note: inside `ostd::boot::call_ostd_main` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:125:14: 125:27
+    = note: inside `ostd::arch::boot::miri_boot` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/boot/mod.rs:69:5: 69:34
+note: inside `miri_start`
+   --> src/main.rs:12:5
+    |
+12  |     ostd::arch::boot::miri_boot();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: integer-to-pointer cast
+   --> /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/bitvec-1.0.1/src/ptr/span.rs:254:5
+    |
+254 |                 (self.ptr.as_ptr() as usize & Self::PTR_ADDR_MASK) as *mut T,
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = note: BACKTRACE:
+    = note: inside `bitvec::ptr::span::BitSpan::<wyz::comu::Mut, u8>::address` at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/bitvec-1.0.1/src/ptr/span.rs:254:5: 254:65
+    = note: inside `bitvec::vec::BitVec::<u8>::into_vec` at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/bitvec-1.0.1/src/vec.rs:427:5: 427:22
+    = note: inside `bitvec::vec::BitVec::<u8>::with_vec::<{closure@bitvec::vec::BitVec<u8>::do_reservation<for<'a> fn(&'a mut alloc::vec::Vec<u8>, usize) {alloc::vec::Vec::<u8>::reserve}>::{closure#0}}, ()>` at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/bitvec-1.0.1/src/vec.rs:655:17: 656:15
+    = note: inside `bitvec::vec::BitVec::<u8>::do_reservation::<for<'a> fn(&'a mut alloc::vec::Vec<u8>, usize) {alloc::vec::Vec::<u8>::reserve}>` at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/bitvec-1.0.1/src/vec.rs:635:3: 639:5
+    = note: inside `bitvec::vec::api::<impl bitvec::vec::BitVec<u8>>::reserve` at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/bitvec-1.0.1/src/vec/api.rs:248:3: 248:53
+    = note: inside `bitvec::vec::api::<impl bitvec::vec::BitVec<u8>>::resize` at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/bitvec-1.0.1/src/vec/api.rs:919:4: 919:31
+    = note: inside `id_alloc::IdAlloc::with_capacity` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/libs/id-alloc/src/lib.rs:22:9: 22:39
+    = note: inside closure at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/irq.rs:30:51: 30:78
+    = note: inside closure at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/spin-0.9.8/src/once.rs:169:72: 169:75
+    = note: inside `spin::once::Once::<ostd::sync::Mutex<id_alloc::IdAlloc>>::try_call_once_slow::<{closure@spin::once::Once<ostd::sync::Mutex<id_alloc::IdAlloc>>::call_once<{closure@ostd::arch::miri::irq::init::{closure#1}}>::{closure#0}}, core::convert::Infallible>` at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/spin-0.9.8/src/once.rs:255:29: 255:32
+    = note: inside `spin::once::Once::<ostd::sync::Mutex<id_alloc::IdAlloc>>::try_call_once::<{closure@spin::once::Once<ostd::sync::Mutex<id_alloc::IdAlloc>>::call_once<{closure@ostd::arch::miri::irq::init::{closure#1}}>::{closure#0}}, core::convert::Infallible>` at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/spin-0.9.8/src/once.rs:212:13: 212:39
+    = note: inside `spin::once::Once::<ostd::sync::Mutex<id_alloc::IdAlloc>>::call_once::<{closure@ostd::arch::miri::irq::init::{closure#1}}>` at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/spin-0.9.8/src/once.rs:169:15: 169:77
+    = note: inside `ostd::arch::miri::irq::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/irq.rs:30:5: 30:80
+    = note: inside `ostd::arch::miri::init_on_bsp` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/mod.rs:32:5: 32:16
+    = note: inside `ostd::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/lib.rs:93:5: 93:24
+    = note: inside `ostd::boot::call_ostd_main` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:125:14: 125:27
+    = note: inside `ostd::arch::boot::miri_boot` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/boot/mod.rs:69:5: 69:34
+note: inside `miri_start`
+   --> src/main.rs:12:5
+    |
+12  |     ostd::arch::boot::miri_boot();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: integer-to-pointer cast
+   --> /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/bitvec-1.0.1/src/ptr/span.rs:277:37
+    |
+277 |         self.ptr = NonNull::new_unchecked(addr_value as *mut ())
+    |                                           ^^^^^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = note: BACKTRACE:
+    = note: inside `bitvec::ptr::span::BitSpan::<wyz::comu::Mut, u8>::set_address` at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/bitvec-1.0.1/src/ptr/span.rs:277:37: 277:58
+    = note: inside `bitvec::vec::BitVec::<u8>::with_vec::<{closure@bitvec::vec::BitVec<u8>::do_reservation<for<'a> fn(&'a mut alloc::vec::Vec<u8>, usize) {alloc::vec::Vec::<u8>::reserve}>::{closure#0}}, ()>` at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/bitvec-1.0.1/src/vec.rs:661:4: 661:61
+    = note: inside `bitvec::vec::BitVec::<u8>::do_reservation::<for<'a> fn(&'a mut alloc::vec::Vec<u8>, usize) {alloc::vec::Vec::<u8>::reserve}>` at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/bitvec-1.0.1/src/vec.rs:635:3: 639:5
+    = note: inside `bitvec::vec::api::<impl bitvec::vec::BitVec<u8>>::reserve` at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/bitvec-1.0.1/src/vec/api.rs:248:3: 248:53
+    = note: inside `bitvec::vec::api::<impl bitvec::vec::BitVec<u8>>::resize` at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/bitvec-1.0.1/src/vec/api.rs:919:4: 919:31
+    = note: inside `id_alloc::IdAlloc::with_capacity` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/libs/id-alloc/src/lib.rs:22:9: 22:39
+    = note: inside closure at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/irq.rs:30:51: 30:78
+    = note: inside closure at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/spin-0.9.8/src/once.rs:169:72: 169:75
+    = note: inside `spin::once::Once::<ostd::sync::Mutex<id_alloc::IdAlloc>>::try_call_once_slow::<{closure@spin::once::Once<ostd::sync::Mutex<id_alloc::IdAlloc>>::call_once<{closure@ostd::arch::miri::irq::init::{closure#1}}>::{closure#0}}, core::convert::Infallible>` at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/spin-0.9.8/src/once.rs:255:29: 255:32
+    = note: inside `spin::once::Once::<ostd::sync::Mutex<id_alloc::IdAlloc>>::try_call_once::<{closure@spin::once::Once<ostd::sync::Mutex<id_alloc::IdAlloc>>::call_once<{closure@ostd::arch::miri::irq::init::{closure#1}}>::{closure#0}}, core::convert::Infallible>` at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/spin-0.9.8/src/once.rs:212:13: 212:39
+    = note: inside `spin::once::Once::<ostd::sync::Mutex<id_alloc::IdAlloc>>::call_once::<{closure@ostd::arch::miri::irq::init::{closure#1}}>` at /root/.cargo/registry/src/rsproxy.cn-0dccff568467c15b/spin-0.9.8/src/once.rs:169:15: 169:77
+    = note: inside `ostd::arch::miri::irq::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/irq.rs:30:5: 30:80
+    = note: inside `ostd::arch::miri::init_on_bsp` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/mod.rs:32:5: 32:16
+    = note: inside `ostd::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/lib.rs:93:5: 93:24
+    = note: inside `ostd::boot::call_ostd_main` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:125:14: 125:27
+    = note: inside `ostd::arch::boot::miri_boot` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/boot/mod.rs:69:5: 69:34
+note: inside `miri_start`
+   --> src/main.rs:12:5
+    |
+12  |     ostd::arch::boot::miri_boot();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: integer-to-pointer cast
+   --> /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/cpu/local/single_instr.rs:165:19
+    |
+165 |         let ptr = (base + offset as usize) as *mut Self;
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ integer-to-pointer cast
+    |
+    = note: BACKTRACE:
+    = note: inside `<u32 as ostd::cpu::local::single_instr::SingleInstructionStore>::store` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/cpu/local/single_instr.rs:165:19: 165:56
+    = note: inside `ostd::cpu::local::CpuLocalCell::<u32>::store` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/cpu/local/cell.rs:258:13: 258:34
+    = note: inside `ostd::cpu::set_this_cpu_id` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/cpu/mod.rs:76:5: 76:26
+    = note: inside `ostd::arch::miri::init_on_bsp` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/mod.rs:37:9: 37:39
+    = note: inside `ostd::init` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/lib.rs:93:5: 93:24
+    = note: inside `ostd::boot::call_ostd_main` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:125:14: 125:27
+    = note: inside `ostd::arch::boot::miri_boot` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/boot/mod.rs:69:5: 69:34
+note: inside `miri_start`
+   --> src/main.rs:12:5
+    |
+12  |     ostd::arch::boot::miri_boot();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: unsupported operation: can't call foreign function `__ostd_main` on OS `linux`
+   --> /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:130:9
+    |
+130 |         __ostd_main();
+    |         ^^^^^^^^^^^^^ can't call foreign function `__ostd_main` on OS `linux`
+    |
+    = help: if this is a basic API commonly used on this target, please report an issue with Miri
+    = help: however, note that Miri does not aim to support every FFI function out there; for instance, we will not support APIs for things such as GUIs, scripting languages, or databases
+    = note: BACKTRACE:
+    = note: inside `ostd::boot::call_ostd_main` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/boot/mod.rs:130:9: 130:22
+    = note: inside `ostd::arch::boot::miri_boot` at /root/.cargo/git/checkouts/atc25-artifact-evaluation-f9921f617d20312e/59dca48/ostd/src/arch/miri/boot/mod.rs:69:5: 69:34
+note: inside `miri_start`
+   --> src/main.rs:12:5
+    |
+12  |     ostd::arch::boot::miri_boot();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error; 31 warnings emitted
 

@@ -7,4 +7,9 @@ cargo -V
 miri -V
 cargo miri -V
 cd reproduce/bug
-RUSTFLAGS=--cfg=ktest cargo miri run 2>bug.txt
+
+# ostd needs this to compile
+export RUSTFLAGS=--cfg=ktest MIRIFLAGS="-Zmiri-disable-stacked-borrows -Zmiri-ignore-leaks"
+
+# Run KernMiri
+cargo miri run 2> >(tee bug.txt)
