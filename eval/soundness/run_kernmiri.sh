@@ -1,12 +1,15 @@
 #!/bin/bash
 
-if [ -d "$HOME/miri" ]; then
-    rm -rf $HOME/miri
-fi
+set -eou pipefail
+apt-get install -y iperf iperf3 nginx sysbench exfat-fuse
 
-if [ -d "$HOME/miri_asterinas" ]; then
-    rm -rf $HOME/miri_asterinas
-fi
+#if [ -d "$HOME/miri" ]; then
+#    rm -rf $HOME/miri
+#fi
+#
+#if [ -d "$HOME/miri_asterinas" ]; then
+#    rm -rf $HOME/miri_asterinas
+#fi
 
 git clone --single-branch -b kern_miri https://github.com/asterinas/atc25-artifact-evaluation.git ~/miri
 git clone --single-branch -b miri_asterinas https://github.com/asterinas/atc25-artifact-evaluation.git ~/miri_asterinas
@@ -28,7 +31,7 @@ pushd ~/miri_asterinas
 git reset --hard 59dca48f8b2d9d3e5edd8ef89443417b57749682
 rustup override set nightly-2024-11-04
 make install_osdk
-make build
+# make build
 
 pushd ostd
 MIRIFLAGS="-Zmiri-disable-stacked-borrows -Zmiri-ignore-leaks" cargo osdk miri run
@@ -36,5 +39,5 @@ popd
 
 popd
 # Cleanup
-rm -rf ~/miri
-rm -rf ~/miri_asterinas
+# rm -rf ~/miri
+# rm -rf ~/miri_asterinas
