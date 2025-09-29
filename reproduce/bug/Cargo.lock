@@ -16,7 +16,6 @@ dependencies = [
 [[package]]
 name = "align_ext"
 version = "0.1.0"
-source = "git+https://github.com/asterinas/atc25-artifact-evaluation?branch=miri_asterinas#59dca48f8b2d9d3e5edd8ef89443417b57749682"
 
 [[package]]
 name = "aml"
@@ -210,7 +209,6 @@ checksum = "07e28edb80900c19c28f1072f2e8aeca7fa06b23cd4169cefe1af5aa3260783f"
 [[package]]
 name = "id-alloc"
 version = "0.1.0"
-source = "git+https://github.com/asterinas/atc25-artifact-evaluation?branch=miri_asterinas#59dca48f8b2d9d3e5edd8ef89443417b57749682"
 dependencies = [
  "bitvec",
 ]
@@ -235,7 +233,6 @@ dependencies = [
 [[package]]
 name = "int-to-c-enum"
 version = "0.1.0"
-source = "git+https://github.com/asterinas/atc25-artifact-evaluation?branch=miri_asterinas#59dca48f8b2d9d3e5edd8ef89443417b57749682"
 dependencies = [
  "int-to-c-enum-derive",
 ]
@@ -243,7 +240,6 @@ dependencies = [
 [[package]]
 name = "int-to-c-enum-derive"
 version = "0.1.0"
-source = "git+https://github.com/asterinas/atc25-artifact-evaluation?branch=miri_asterinas#59dca48f8b2d9d3e5edd8ef89443417b57749682"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -268,7 +264,6 @@ checksum = "58f929b4d672ea937a23a1ab494143d968337a5f47e56d0815df1e0890ddf174"
 [[package]]
 name = "linux-boot-params"
 version = "0.11.1"
-source = "git+https://github.com/asterinas/atc25-artifact-evaluation?branch=miri_asterinas#59dca48f8b2d9d3e5edd8ef89443417b57749682"
 
 [[package]]
 name = "lock_api"
@@ -394,7 +389,6 @@ dependencies = [
 [[package]]
 name = "ostd"
 version = "0.11.1"
-source = "git+https://github.com/asterinas/atc25-artifact-evaluation?branch=miri_asterinas#59dca48f8b2d9d3e5edd8ef89443417b57749682"
 dependencies = [
  "acpi",
  "align_ext",
@@ -435,7 +429,6 @@ dependencies = [
 [[package]]
 name = "ostd-macros"
 version = "0.11.1"
-source = "git+https://github.com/asterinas/atc25-artifact-evaluation?branch=miri_asterinas#59dca48f8b2d9d3e5edd8ef89443417b57749682"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -464,7 +457,6 @@ dependencies = [
 [[package]]
 name = "ostd-test"
 version = "0.11.1"
-source = "git+https://github.com/asterinas/atc25-artifact-evaluation?branch=miri_asterinas#59dca48f8b2d9d3e5edd8ef89443417b57749682"
 
 [[package]]
 name = "ppv-lite86"

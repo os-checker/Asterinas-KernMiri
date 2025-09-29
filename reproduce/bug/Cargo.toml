@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ostd = { git = "https://github.com/asterinas/atc25-artifact-evaluation", branch = "miri_asterinas" }
+ostd = { path = "../../../miri_asterinas/ostd/" }
 
 [workspace]
 exclude = ["target/osdk/base", "target/osdk/test-base"]
